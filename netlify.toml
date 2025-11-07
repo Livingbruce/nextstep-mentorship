@@ -13,3 +13,15 @@
   to = "/index.html"
   status = 200
 
+# Headers for Content Security Policy
+[[headers]]
+  for = "/*"
+  [headers.values]
+    # Allow connections to Render backend and other APIs
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://*.onrender.com https://*.render.com http://localhost:5000 http://localhost:3000; frame-ancestors 'none';"
+    # Allow CORS for API calls
+    Access-Control-Allow-Origin = "*"
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+

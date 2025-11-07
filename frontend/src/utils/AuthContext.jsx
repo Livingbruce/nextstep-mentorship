@@ -33,7 +33,11 @@ export function AuthProvider({ children }) {
           setIsAuthenticated(true);
           
           // Then verify with API in background (don't block UI)
-          fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/auth/me`, {
+          const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? 'http://localhost:5000' : '');
+          if (!apiBaseUrl && !import.meta.env.DEV) {
+            throw new Error('API URL not configured');
+          }
+          fetch(`${apiBaseUrl}/api/auth/me`, {
             headers: {
               'Content-Type': 'application/json',
               'Authorization': `Bearer ${token}`,
@@ -110,8 +114,15 @@ export function AuthProvider({ children }) {
 
   const loginUser = async (email, password) => {
     try {
+      // Get API base URL - check environment variable first
+      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? 'http://localhost:5000' : '');
+      
+      if (!apiBaseUrl && !import.meta.env.DEV) {
+        throw new Error('API URL not configured. Please set VITE_API_BASE_URL in Netlify environment variables.');
+      }
+      
       // Real API authentication
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/auth/login`, {
+      const response = await fetch(`${apiBaseUrl}/api/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
