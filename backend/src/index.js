@@ -130,13 +130,19 @@ app.options('*', (req, res) => {
   }
 });
 
-// Explicit header override for some proxies/browsers
+// Explicit header override - MUST run after cors middleware
+// This ensures we ALWAYS set normalized origin (no trailing slash)
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   if (origin) {
+    // ALWAYS normalize - remove trailing slash
     const normalizedOrigin = normalizeOrigin(origin);
+    
+    // Check if normalized origin is allowed
     if (allowedOrigins.some(allowed => normalizeOrigin(allowed) === normalizedOrigin)) {
-      res.header('Access-Control-Allow-Origin', normalizedOrigin);
+      // CRITICAL: Always set normalized origin (no trailing slash)
+      res.removeHeader('Access-Control-Allow-Origin'); // Remove any existing header
+      res.header('Access-Control-Allow-Origin', normalizedOrigin); // Set normalized
       res.header('Access-Control-Allow-Credentials', 'true');
     }
   }

@@ -1,0 +1,26 @@
+# Netlify Backend Configuration
+# This file configures the backend to run on Netlify Functions
+# This eliminates CORS issues since frontend and backend are on the same domain
+
+[build]
+  base = "backend"
+  publish = "."
+  command = "echo 'Backend deployed as Netlify Functions'"
+
+# Netlify Functions configuration
+[functions]
+  directory = "backend/netlify/functions"
+
+# Environment variables for backend
+[build.environment]
+  NODE_VERSION = "20"
+
+# Headers for API routes
+[[headers]]
+  for = "/api/*"
+  [headers.values]
+    Access-Control-Allow-Origin = "*"
+    Access-Control-Allow-Credentials = "true"
+    Access-Control-Allow-Methods = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+    Access-Control-Allow-Headers = "Content-Type, Authorization, X-Requested-With"
+
