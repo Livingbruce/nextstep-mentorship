@@ -42,10 +42,22 @@ if (connectionString) {
       database: url.pathname ? url.pathname.replace(/^\//, "") : undefined,
       user: url.username || undefined,
       ...(resolvedPassword !== undefined ? { password: resolvedPassword } : {}),
-      ssl: process.env.PGSSL === "true" || connectionString.includes('sslmode=require') ? { rejectUnauthorized: false } : undefined,
+      // Enable SSL for Render databases (required) and when explicitly set
+      ssl: process.env.PGSSL === "true" || 
+           connectionString.includes('sslmode=require') || 
+           url.hostname.includes('.render.com') || 
+           url.hostname.includes('dpg-') 
+           ? { rejectUnauthorized: false } 
+           : undefined,
     };
   } catch (_e) {
-    poolConfig = { connectionString };
+    // If URL parsing fails, use connection string directly
+    // Enable SSL for Render databases
+    const isRenderDb = connectionString.includes('.render.com') || connectionString.includes('dpg-');
+    poolConfig = { 
+      connectionString,
+      ...(isRenderDb || process.env.PGSSL === "true" ? { ssl: { rejectUnauthorized: false } } : {})
+    };
   }
 } else {
   const envHost = process.env.PGHOST || process.env.DB_HOST || "localhost";
@@ -69,7 +81,11 @@ if (connectionString) {
     database: envDb || undefined,
     user: envUser || undefined,
     ...(envPass !== undefined ? { password: envPass } : {}),
-    ssl: process.env.PGSSL === "true" || connectionString?.includes('sslmode=require') ? { rejectUnauthorized: false } : undefined,
+    // Enable SSL for Render databases (required) and when explicitly set
+    ssl: process.env.PGSSL === "true" || 
+         connectionString?.includes('sslmode=require') 
+         ? { rejectUnauthorized: false } 
+         : undefined,
   };
 }
 

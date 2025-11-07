@@ -87,3 +87,10 @@ jspm_packages/
 ehthumbs.db
 Thumbs.db
 .vercel
+
+# Local Netlify folder
+.netlify
+
+# Database backups (may contain sensitive data)
+*.sql
+backup.sql

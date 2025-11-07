@@ -10,13 +10,15 @@ services:
         value: production
       - key: PORT
         value: 10000
-    # Add your environment variables here or in Render dashboard:
-    # - key: DATABASE_URL
-    #   sync: false
-    # - key: JWT_SECRET
-    #   sync: false
-    # - key: BOT_TOKEN
-    #   sync: false
-    # - key: FRONTEND_URL
-    #   value: https://nextstep-mentorship.netlify.app
+    # Environment variables should be set in Render dashboard:
+    # Required:
+    # - DATABASE_URL: PostgreSQL connection string (from Render PostgreSQL service)
+    #   Use Internal Database URL for services in same region
+    #   Format: postgresql://user:password@hostname:5432/database
+    # - JWT_SECRET: Secret key for JWT token generation
+    # - FRONTEND_URL: https://nextstep-mentorship.netlify.app
+    # Optional:
+    # - BOT_TOKEN: Telegram bot token (if using Telegram integration)
+    # - EMAIL_HOST, EMAIL_PORT, EMAIL_USER, EMAIL_PASS: Email service config
+    # - PGSSL: Set to "true" to force SSL (auto-enabled for Render databases)
 
