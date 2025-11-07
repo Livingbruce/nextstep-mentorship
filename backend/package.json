@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "nodemon src/index.js"
+    "dev": "nodemon src/index.js",
+    "create-admin": "node create-admin-user.js"
   },
   "dependencies": {
     "bcrypt": "^5.1.1",
