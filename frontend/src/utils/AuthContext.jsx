@@ -33,7 +33,7 @@ export function AuthProvider({ children }) {
           setIsAuthenticated(true);
           
           // Then verify with API in background (don't block UI)
-          fetch('http://localhost:5000/api/auth/me', {
+          fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/auth/me`, {
             headers: {
               'Content-Type': 'application/json',
               'Authorization': `Bearer ${token}`,
@@ -111,7 +111,7 @@ export function AuthProvider({ children }) {
   const loginUser = async (email, password) => {
     try {
       // Real API authentication
-      const response = await fetch('http://localhost:5000/api/auth/login', {
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -1,5 +1,5 @@
-// Local backend URL
-const API_BASE_URL = 'http://localhost:5000';
+// Backend URL - use environment variable in production, localhost in development
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? 'http://localhost:5000' : '');
 
 export async function fetchWithAuth(url, options = {}) {
   // If it's a real API call, use the Railway backend

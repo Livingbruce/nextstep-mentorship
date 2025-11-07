@@ -297,7 +297,7 @@ const Profile = () => {
 
       console.log('📁 Fetching documents for profile page:', email);
       
-      const response = await fetch(`http://localhost:5000/api/auth/get-documents-by-email?email=${encodeURIComponent(email)}`, {
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/auth/get-documents-by-email?email=${encodeURIComponent(email)}`, {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' }
       });
