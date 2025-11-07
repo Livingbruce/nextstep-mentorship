@@ -42,6 +42,39 @@ dotenv.config({ path: path.join(__dirname, "../.env") });
 
 const app = express();
 
+// Normalize frontend URL (remove trailing slash)
+const normalizeOrigin = (origin) => {
+  if (!origin) return origin;
+  return origin.replace(/\/+$/, ''); // Remove trailing slashes
+};
+
+// Get allowed origins
+const frontendUrl = normalizeOrigin(process.env.FRONTEND_URL || 'http://localhost:3000');
+const allowedOrigins = [
+  frontendUrl,
+  `${frontendUrl}/`, // Also allow with trailing slash for flexibility
+  'http://localhost:3000',
+  'http://localhost:5000'
+].filter(Boolean);
+
+// CORS origin function to handle both with and without trailing slash
+const corsOrigin = (origin, callback) => {
+  // Allow requests with no origin (like mobile apps or curl requests)
+  if (!origin) return callback(null, true);
+  
+  // Normalize the origin (remove trailing slash)
+  const normalizedOrigin = normalizeOrigin(origin);
+  
+  // Check if normalized origin is in allowed list
+  if (allowedOrigins.some(allowed => normalizeOrigin(allowed) === normalizedOrigin)) {
+    // Return the normalized origin (without trailing slash) to match browser expectation
+    return callback(null, normalizedOrigin);
+  }
+  
+  // Reject the request
+  return callback(new Error('Not allowed by CORS'));
+};
+
 // Security middleware (order matters!)
 app.use(helmet({
   contentSecurityPolicy: {
@@ -60,8 +93,9 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false
 }));
 
+// CORS configuration with origin function
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: corsOrigin,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -69,7 +103,7 @@ app.use(cors({
 
 // Ensure preflight responses include PATCH
 app.options('*', cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: corsOrigin,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization']
