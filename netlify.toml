@@ -1,7 +1,18 @@
 [build]
   base = "frontend"
   publish = "dist"
-  command = "npm install && npm run build"
+  command = "cd frontend && npm install && npm run build"
+
+# Netlify Functions for backend API
+[functions]
+  directory = "backend/netlify/functions"
+
+# Redirect API calls to Netlify Functions
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api"
+  status = 200
+  force = true
 
 [build.environment]
   NODE_VERSION = "20"
