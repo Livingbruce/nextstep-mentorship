@@ -38,6 +38,7 @@ export function AuthProvider({ children }) {
             throw new Error('API URL not configured');
           }
           fetch(`${apiBaseUrl}/api/auth/me`, {
+            credentials: 'include', // Required for CORS with credentials
             headers: {
               'Content-Type': 'application/json',
               'Authorization': `Bearer ${token}`,
@@ -124,6 +125,7 @@ export function AuthProvider({ children }) {
       // Real API authentication
       const response = await fetch(`${apiBaseUrl}/api/auth/login`, {
         method: 'POST',
+        credentials: 'include', // Required for CORS with credentials
         headers: {
           'Content-Type': 'application/json',
         },

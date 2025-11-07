@@ -42,7 +42,7 @@ dotenv.config({ path: path.join(__dirname, "../.env") });
 
 const app = express();
 
-// Normalize frontend URL (remove trailing slash)
+
 const normalizeOrigin = (origin) => {
   if (!origin) return origin;
   return origin.replace(/\/+$/, ''); // Remove trailing slashes
@@ -93,25 +93,55 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false
 }));
 
+// CORS logging middleware (for debugging)
+app.use((req, res, next) => {
+  if (req.method === 'OPTIONS' || req.headers.origin) {
+    console.log(`[CORS] ${req.method} ${req.path} - Origin: ${req.headers.origin || 'none'}`);
+  }
+  next();
+});
+
 // CORS configuration with origin function
 app.use(cors({
   origin: corsOrigin,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['Content-Type', 'Authorization'],
+  maxAge: 86400 // 24 hours
 }));
 
-// Ensure preflight responses include PATCH
-app.options('*', cors({
-  origin: corsOrigin,
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
+// Explicit OPTIONS handler for preflight requests
+app.options('*', (req, res) => {
+  const origin = req.headers.origin;
+  const normalizedOrigin = normalizeOrigin(origin);
+  
+  // Check if origin is allowed
+  if (allowedOrigins.some(allowed => normalizeOrigin(allowed) === normalizedOrigin)) {
+    res.header('Access-Control-Allow-Origin', normalizedOrigin);
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    res.header('Access-Control-Max-Age', '86400');
+    res.sendStatus(204);
+  } else {
+    console.log(`[CORS] OPTIONS request rejected - Origin: ${origin}`);
+    res.sendStatus(403);
+  }
+});
 
 // Explicit header override for some proxies/browsers
 app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin) {
+    const normalizedOrigin = normalizeOrigin(origin);
+    if (allowedOrigins.some(allowed => normalizeOrigin(allowed) === normalizedOrigin)) {
+      res.header('Access-Control-Allow-Origin', normalizedOrigin);
+      res.header('Access-Control-Allow-Credentials', 'true');
+    }
+  }
   res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS,PATCH');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
   next();
 });
 

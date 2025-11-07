@@ -67,6 +67,7 @@ const Signup = () => {
 
       const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/auth/get-user-by-email?email=${encodeURIComponent(email)}`, {
         method: 'GET',
+        credentials: 'include', // Required for CORS with credentials
         headers: {
           'Content-Type': 'application/json'
         }
@@ -144,6 +145,7 @@ const Signup = () => {
         
         const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/auth/get-user-by-email?email=${encodeURIComponent(email)}`, {
           method: 'GET',
+          credentials: 'include', // Required for CORS with credentials
           headers: { 'Content-Type': 'application/json' }
         });
 
@@ -198,6 +200,7 @@ const Signup = () => {
       
       const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/auth/get-documents-by-email?email=${encodeURIComponent(email)}`, {
         method: 'GET',
+        credentials: 'include', // Required for CORS with credentials
         headers: { 'Content-Type': 'application/json' }
       });
 
@@ -255,6 +258,7 @@ const Signup = () => {
 
       const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/auth/get-user-by-email?email=${encodeURIComponent(email)}`, {
         method: 'GET',
+        credentials: 'include', // Required for CORS with credentials
         headers: { 'Content-Type': 'application/json' }
       });
 
@@ -321,6 +325,7 @@ const Signup = () => {
     try {
       const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/auth/basic-signup`, {
         method: 'POST',
+        credentials: 'include', // Required for CORS with credentials
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           firstName: basicInfo.firstName,
@@ -390,6 +395,7 @@ const Signup = () => {
 
       const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/auth/personal-info`, {
         method: 'POST',
+        credentials: 'include', // Required for CORS with credentials
         headers,
         body: JSON.stringify(signupData)
       });
@@ -509,6 +515,7 @@ const Signup = () => {
 
       const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/auth/professional-info`, {
         method: 'POST',
+        credentials: 'include', // Required for CORS with credentials
         headers,
         body: formData
       });

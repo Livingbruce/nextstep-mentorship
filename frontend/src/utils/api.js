@@ -19,6 +19,7 @@ export async function fetchWithAuth(url, options = {}) {
       
       const response = await fetch(`${API_BASE_URL}${url}`, {
         ...options,
+        credentials: 'include', // Required for CORS with credentials
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
@@ -185,6 +186,7 @@ const api = {
         }
         
         const response = await fetch(`${API_BASE_URL}${url}`, {
+          credentials: 'include', // Required for CORS with credentials
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`,
@@ -265,6 +267,7 @@ const api = {
         console.log('🚀 API.post making call to:', `${API_BASE_URL}${url}`);
         const response = await fetch(`${API_BASE_URL}${url}`, {
           method: 'POST',
+          credentials: 'include', // Required for CORS with credentials
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`,
@@ -305,6 +308,7 @@ const api = {
         console.log('🚀 API.patch making call to:', `${API_BASE_URL}${url}`);
         const response = await fetch(`${API_BASE_URL}${url}`, {
           method: 'PATCH',
+          credentials: 'include', // Required for CORS with credentials
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`,
@@ -345,6 +349,7 @@ const api = {
         console.log('🚀 API.put making call to:', `${API_BASE_URL}${url}`);
         const response = await fetch(`${API_BASE_URL}${url}`, {
           method: 'PUT',
+          credentials: 'include', // Required for CORS with credentials
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`,
@@ -385,6 +390,7 @@ const api = {
         console.log('🚀 API.delete making call to:', `${API_BASE_URL}${url}`);
         const response = await fetch(`${API_BASE_URL}${url}`, {
           method: 'DELETE',
+          credentials: 'include', // Required for CORS with credentials
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`,

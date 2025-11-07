@@ -52,6 +52,7 @@ const Contacts = () => {
         }
 
         const response = await fetch(`${API_BASE_URL}/api/dashboard/contacts`, {
+          credentials: 'include', // Required for CORS with credentials
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`
@@ -133,6 +134,7 @@ const Contacts = () => {
 
       const response = await fetch(`${API_BASE_URL}/api/dashboard/contacts`, {
         method: "POST",
+        credentials: 'include', // Required for CORS with credentials
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`
@@ -172,6 +174,7 @@ const Contacts = () => {
 
       const response = await fetch(`${API_BASE_URL}/api/dashboard/contacts/${id}`, {
         method: "DELETE",
+        credentials: 'include', // Required for CORS with credentials
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`
