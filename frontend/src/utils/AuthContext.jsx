@@ -33,10 +33,9 @@ export function AuthProvider({ children }) {
           setIsAuthenticated(true);
           
           // Then verify with API in background (don't block UI)
-          const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? 'http://localhost:5000' : '');
-          if (!apiBaseUrl && !import.meta.env.DEV) {
-            throw new Error('API URL not configured');
-          }
+          const envUrl = import.meta.env.VITE_API_BASE_URL;
+          const apiBaseUrl = envUrl || (import.meta.env.DEV ? 'http://localhost:5000' : '');
+          // Use relative URL if no env URL (same domain = no CORS)
           fetch(`${apiBaseUrl}/api/auth/me`, {
             credentials: 'include', // Required for CORS with credentials
             headers: {
@@ -115,12 +114,10 @@ export function AuthProvider({ children }) {
 
   const loginUser = async (email, password) => {
     try {
-      // Get API base URL - check environment variable first
-      const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? 'http://localhost:5000' : '');
-      
-      if (!apiBaseUrl && !import.meta.env.DEV) {
-        throw new Error('API URL not configured. Please set VITE_API_BASE_URL in Netlify environment variables.');
-      }
+      // Get API base URL - use relative URL when on same domain (Netlify)
+      const envUrl = import.meta.env.VITE_API_BASE_URL;
+      const apiBaseUrl = envUrl || (import.meta.env.DEV ? 'http://localhost:5000' : '');
+      // If no env URL in production, use relative URL (same domain = no CORS needed)
       
       // Real API authentication
       const response = await fetch(`${apiBaseUrl}/api/auth/login`, {

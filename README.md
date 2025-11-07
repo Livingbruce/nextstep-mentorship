@@ -1,103 +1,138 @@
-# NextStep Mentorship Bot
+# NextStep Mentorship Platform
 
-A complete authentication solution for Maseno University's counseling services.
+A complete authentication and counseling services platform for Maseno University.
 
-## Features
+## 🚀 Features
 
 - 🔐 User Authentication (Login/Logout)
 - 👤 User Profile Management
 - 🎓 Admin Dashboard
 - 📱 Responsive Design
 - 🔒 Secure JWT Authentication
+- 📅 Appointment Management
+- 📚 Book Management
+- 📢 Announcements
+- 🎯 Activities & Mentorship Programs
 
-## Tech Stack
+## 🛠️ Tech Stack
 
 - **Frontend**: React.js, Vite
 - **Backend**: Node.js, Express.js
 - **Database**: PostgreSQL
 - **Authentication**: JWT (JSON Web Tokens)
-- **Deployment**: Render
+- **Deployment**: Netlify (Frontend + Backend Functions)
 
-## Quick Start
+## 📋 Prerequisites
 
-### Prerequisites
-
-- Node.js 18+ 
+- Node.js 20+
 - PostgreSQL database
 - Git
+
+## 🏃‍♂️ Quick Start
 
 ### Installation
 
 1. Clone the repository:
 ```bash
-git clone <your-repo-url>
-cd nextstep-mentorship-bot
+git clone https://github.com/Livingbruce/nextstep-mentorship.git
+cd nextstep-mentorship
 ```
 
 2. Install dependencies:
 ```bash
+# Backend
+cd backend
 npm install
-cd frontend
+
+# Frontend
+cd ../frontend
 npm install
-cd ..
 ```
 
 3. Set up environment variables:
-```bash
-cp env.example .env
-```
 
-4. Update `.env` with your database credentials:
+**Backend** (`.env` in `backend/` directory):
 ```
-DATABASE_URL=postgresql://username:password@hostname:port/database
+DATABASE_URL=postgresql://user:password@host:port/database
 JWT_SECRET=your-super-secret-jwt-key-here
-NODE_ENV=production
+NODE_ENV=development
 PORT=5000
+FRONTEND_URL=http://localhost:3000
 ```
 
-5. Build the frontend:
+**Frontend** (`.env` in `frontend/` directory):
+```
+VITE_API_BASE_URL=http://localhost:5000
+```
+
+4. Start development servers:
+
 ```bash
-npm run build
+# Backend (from backend directory)
+npm run dev
+
+# Frontend (from frontend directory)
+npm run dev
 ```
 
-6. Start the server:
-```bash
-npm start
+## 🌐 Deployment
+
+### Netlify Deployment
+
+The application is configured to deploy on Netlify with:
+- Frontend served as static site
+- Backend running as Netlify Functions (same domain = no CORS issues)
+
+**Environment Variables** (Set in Netlify Dashboard):
+
+**Backend:**
+- `DATABASE_URL` - PostgreSQL connection string
+- `JWT_SECRET` - Secret key for JWT tokens
+- `NODE_ENV=production`
+- `FRONTEND_URL` - Your Netlify frontend URL
+
+**Frontend:**
+- `VITE_API_BASE_URL` - Leave empty to use relative URLs (recommended)
+
+See `NETLIFY_BACKEND_SETUP.md` for detailed deployment instructions.
+
+## 📁 Project Structure
+
+```
+nextstep-mentorship/
+├── backend/
+│   ├── src/
+│   │   ├── controllers/    # Route controllers
+│   │   ├── routes/          # API routes
+│   │   ├── middleware/       # Auth & security middleware
+│   │   ├── db/              # Database connection
+│   │   └── index.js         # Express app entry point
+│   ├── netlify/
+│   │   └── functions/       # Netlify Functions
+│   └── package.json
+├── frontend/
+│   ├── src/
+│   │   ├── pages/           # React pages
+│   │   ├── components/      # Reusable components
+│   │   ├── utils/           # API utilities
+│   │   └── main.jsx         # React entry point
+│   └── package.json
+└── netlify.toml             # Netlify configuration
 ```
 
-## Demo Credentials
+## 🔑 API Endpoints
 
-- **Email**: admin@maseno.ac.ke
-- **Password**: 123456
-
-## API Endpoints
-
-- `GET /api/` - API status
 - `GET /api/health` - Health check
-- `POST /api/login` - User login
-- `GET /api/me` - Get user profile
+- `POST /api/auth/login` - User login
+- `GET /api/auth/me` - Get current user
+- `POST /api/auth/basic-signup` - User signup
+- `GET /api/dashboard/*` - Dashboard endpoints
+- And more...
 
-## Deployment on Render
+## 📝 License
 
-1. Push your code to GitHub
-2. Connect your GitHub repository to Render
-3. Create a PostgreSQL database on Render
-4. Set environment variables in Render dashboard
-5. Deploy!
+MIT License
 
-## Environment Variables
+## 👥 Contributing
 
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `DATABASE_URL` | PostgreSQL connection string | Yes |
-| `JWT_SECRET` | Secret key for JWT tokens | Yes |
-| `NODE_ENV` | Environment (production/development) | No |
-| `PORT` | Server port (Render sets this) | No |
-
-## License
-
-MIT License - see LICENSE file for details.
-Force deploy 09/20/2025 00:33:50
-
-Force deploy 09/20/2025 00:34:58
-Force deploy 09/20/2025 14:51:31
+Contributions are welcome! Please feel free to submit a Pull Request.
