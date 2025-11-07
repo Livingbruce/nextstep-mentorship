@@ -1,11 +1,12 @@
 [build]
   base = "frontend"
   publish = "dist"
-  command = "cd frontend && npm install && npm run build"
+  command = "npm install && npm run build"
 
 # Netlify Functions for backend API
+# Note: Functions directory is relative to repo root, not base directory
 [functions]
-  directory = "backend/netlify/functions"
+  directory = "../backend/netlify/functions"
 
 # Redirect API calls to Netlify Functions
 [[redirects]]
