@@ -4,9 +4,9 @@
   command = "npm install && npm run build"
 
 # Netlify Functions for backend API
-# Note: Functions directory is relative to repo root, not base directory
+# Functions directory is relative to repository root
 [functions]
-  directory = "../backend/netlify/functions"
+  directory = "backend/netlify/functions"
 
 # Redirect API calls to Netlify Functions
 [[redirects]]
