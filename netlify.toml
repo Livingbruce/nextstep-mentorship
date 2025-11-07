@@ -14,11 +14,13 @@
   status = 200
 
 # Headers for Content Security Policy
+# Note: More permissive CSP to allow API connections
 [[headers]]
   for = "/*"
   [headers.values]
-    # Allow connections to Render backend and other APIs
-    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https://*.onrender.com https://*.render.com http://localhost:5000 http://localhost:3000; frame-ancestors 'none';"
+    # Very permissive CSP for connect-src to allow all HTTPS connections
+    # This is necessary for API calls to Render backend
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https: http://localhost:* ws: wss:; frame-ancestors 'none';"
     # Allow CORS for API calls
     Access-Control-Allow-Origin = "*"
     X-Frame-Options = "DENY"
