@@ -1,13 +1,5 @@
-// Backend URL - use relative URL when on same domain (Netlify), otherwise use env var or localhost
-const getApiBaseUrl = () => {
-  const envUrl = import.meta.env.VITE_API_BASE_URL;
-  // If no env URL and in production, use relative URL (same domain = no CORS)
-  if (!envUrl && !import.meta.env.DEV) {
-    return ''; // Relative URL - same domain as frontend
-  }
-  return envUrl || (import.meta.env.DEV ? 'http://localhost:5000' : '');
-};
-const API_BASE_URL = getApiBaseUrl();
+// Import centralized API config
+import { API_BASE_URL } from './apiConfig.js';
 
 export async function fetchWithAuth(url, options = {}) {
   // If it's a real API call, use the Railway backend

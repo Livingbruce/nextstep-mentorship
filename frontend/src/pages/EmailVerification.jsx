@@ -21,7 +21,8 @@ const EmailVerification = () => {
 
   const verifyEmailToken = async (verificationToken) => {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/auth/confirm-email?token=${verificationToken}`, {
+      const apiUrl = (import.meta.env.VITE_API_BASE_URL && import.meta.env.VITE_API_BASE_URL.trim() !== '') ? import.meta.env.VITE_API_BASE_URL.trim() : (import.meta.env.DEV ? 'http://localhost:5000' : '');
+      const response = await fetch(`${apiUrl}/api/auth/confirm-email?token=${verificationToken}`, {
         credentials: 'include', // Required for CORS with credentials
         method: 'GET',
         headers: {

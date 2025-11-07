@@ -14,6 +14,18 @@ dotenv.config({ path: path.join(__dirname, "../.env") });
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
+// Helper function to get API URL
+const getApiUrl = () => {
+  // Use API_URL if set, otherwise construct from FRONTEND_URL or use localhost
+  if (process.env.API_URL) {
+    return process.env.API_URL.replace(/\/$/, ''); // Remove trailing slash
+  }
+  if (process.env.FRONTEND_URL) {
+    return process.env.FRONTEND_URL.replace(/\/$/, ''); // Remove trailing slash
+  }
+  return 'http://localhost:5000';
+};
+
 // User session management
 const userSessions = new Map();
 
@@ -376,7 +388,8 @@ async function handleBookOrderStep(ctx, session, userId, text) {
     switch (session.step) {
       case 'list_books': {
         // Fetch books from the public API endpoint
-        const response = await fetch('http://localhost:5000/api/books/public');
+        const apiUrl = getApiUrl();
+        const response = await fetch(`${apiUrl}/api/books/public`);
         if (!response.ok) {
           throw new Error('Failed to fetch books');
         }
@@ -518,7 +531,8 @@ async function handleBookOrderStep(ctx, session, userId, text) {
         const totalAmount = book.price_cents + shippingCost;
         
         try {
-          const response = await fetch('http://localhost:5000/api/books/orders/public', {
+          const apiUrl = getApiUrl();
+          const response = await fetch(`${apiUrl}/api/books/orders/public`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -1712,7 +1726,8 @@ cron.schedule('* * * * *', sendNotifications);
 // Keep existing handlers for other features
 bot.hears("📢 Announcements", async (ctx) => {
   try {
-    const res = await fetch("http://localhost:5000/api/announcements/public");
+    const apiUrl = getApiUrl();
+    const res = await fetch(`${apiUrl}/api/announcements/public`);
     const announcements = await res.json();
     if (!announcements || !announcements.length) {
       return ctx.reply("📢 **Announcements**\n\n⚠️ Coming soon...\n\nNo announcements at the moment. Check back later for updates!");
@@ -1730,7 +1745,8 @@ bot.hears("📢 Announcements", async (ctx) => {
 
 bot.hears("🗓 Activities", async (ctx) => {
   try {
-    const res = await fetch("http://localhost:5000/api/activities");
+    const apiUrl = getApiUrl();
+    const res = await fetch(`${apiUrl}/api/activities`);
     const activities = await res.json();
     console.log("Bot received activities:", activities);
     
@@ -2770,7 +2786,8 @@ bot.command('books', async (ctx) => {
 bot.command('myorders', async (ctx) => {
   try {
     const userId = ctx.from.id;
-    const response = await fetch(`http://localhost:5000/api/books/orders/client/${userId}`);
+    const apiUrl = getApiUrl();
+    const response = await fetch(`${apiUrl}/api/books/orders/client/${userId}`);
     
     if (response.ok) {
       const orders = await response.json();

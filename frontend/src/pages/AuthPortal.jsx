@@ -27,7 +27,8 @@ const AuthPortal = () => {
           let hasCompletedRegistration = false;
           let isApproved = false;
           try {
-            const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/auth/get-user-by-email?email=${encodeURIComponent(loginForm.email)}`, {
+            const apiUrl = (import.meta.env.VITE_API_BASE_URL && import.meta.env.VITE_API_BASE_URL.trim() !== '') ? import.meta.env.VITE_API_BASE_URL.trim() : (import.meta.env.DEV ? 'http://localhost:5000' : '');
+            const response = await fetch(`${apiUrl}/api/auth/get-user-by-email?email=${encodeURIComponent(loginForm.email)}`, {
               credentials: 'include', // Required for CORS with credentials
               method: 'GET',
               headers: { 'Content-Type': 'application/json' }

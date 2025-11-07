@@ -65,7 +65,8 @@ const Signup = () => {
       const email = localStorage.getItem('userEmailForVerification');
       if (!email) return;
 
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/auth/get-user-by-email?email=${encodeURIComponent(email)}`, {
+      const apiUrl = (import.meta.env.VITE_API_BASE_URL && import.meta.env.VITE_API_BASE_URL.trim() !== '') ? import.meta.env.VITE_API_BASE_URL.trim() : (import.meta.env.DEV ? 'http://localhost:5000' : '');
+      const response = await fetch(`${apiUrl}/api/auth/get-user-by-email?email=${encodeURIComponent(email)}`, {
         method: 'GET',
         credentials: 'include', // Required for CORS with credentials
         headers: {
@@ -143,7 +144,8 @@ const Signup = () => {
       if (email) {
         console.log('🔍 Fetching personal AND professional info from database for email:', email);
         
-        const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/auth/get-user-by-email?email=${encodeURIComponent(email)}`, {
+        const apiUrl = (import.meta.env.VITE_API_BASE_URL && import.meta.env.VITE_API_BASE_URL.trim() !== '') ? import.meta.env.VITE_API_BASE_URL.trim() : (import.meta.env.DEV ? 'http://localhost:5000' : '');
+      const response = await fetch(`${apiUrl}/api/auth/get-user-by-email?email=${encodeURIComponent(email)}`, {
           method: 'GET',
           credentials: 'include', // Required for CORS with credentials
           headers: { 'Content-Type': 'application/json' }
@@ -198,7 +200,8 @@ const Signup = () => {
 
       console.log('📁 Fetching documents from database for email:', email);
       
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/auth/get-documents-by-email?email=${encodeURIComponent(email)}`, {
+      const apiUrl = (import.meta.env.VITE_API_BASE_URL && import.meta.env.VITE_API_BASE_URL.trim() !== '') ? import.meta.env.VITE_API_BASE_URL.trim() : (import.meta.env.DEV ? 'http://localhost:5000' : '');
+      const response = await fetch(`${apiUrl}/api/auth/get-documents-by-email?email=${encodeURIComponent(email)}`, {
         method: 'GET',
         credentials: 'include', // Required for CORS with credentials
         headers: { 'Content-Type': 'application/json' }
@@ -256,7 +259,8 @@ const Signup = () => {
         return;
       }
 
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/auth/get-user-by-email?email=${encodeURIComponent(email)}`, {
+      const apiUrl = (import.meta.env.VITE_API_BASE_URL && import.meta.env.VITE_API_BASE_URL.trim() !== '') ? import.meta.env.VITE_API_BASE_URL.trim() : (import.meta.env.DEV ? 'http://localhost:5000' : '');
+      const response = await fetch(`${apiUrl}/api/auth/get-user-by-email?email=${encodeURIComponent(email)}`, {
         method: 'GET',
         credentials: 'include', // Required for CORS with credentials
         headers: { 'Content-Type': 'application/json' }
@@ -323,7 +327,8 @@ const Signup = () => {
     setIsLoading(true);
     
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/auth/basic-signup`, {
+      const apiUrl = (import.meta.env.VITE_API_BASE_URL && import.meta.env.VITE_API_BASE_URL.trim() !== '') ? import.meta.env.VITE_API_BASE_URL.trim() : (import.meta.env.DEV ? 'http://localhost:5000' : '');
+      const response = await fetch(`${apiUrl}/api/auth/basic-signup`, {
         method: 'POST',
         credentials: 'include', // Required for CORS with credentials
         headers: { 'Content-Type': 'application/json' },
@@ -393,7 +398,8 @@ const Signup = () => {
         headers['Authorization'] = `Bearer ${token}`;
       }
 
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/auth/personal-info`, {
+      const apiUrl = (import.meta.env.VITE_API_BASE_URL && import.meta.env.VITE_API_BASE_URL.trim() !== '') ? import.meta.env.VITE_API_BASE_URL.trim() : (import.meta.env.DEV ? 'http://localhost:5000' : '');
+      const response = await fetch(`${apiUrl}/api/auth/personal-info`, {
         method: 'POST',
         credentials: 'include', // Required for CORS with credentials
         headers,
@@ -513,7 +519,8 @@ const Signup = () => {
         headers['Authorization'] = `Bearer ${token}`;
       }
 
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/auth/professional-info`, {
+      const apiUrl = (import.meta.env.VITE_API_BASE_URL && import.meta.env.VITE_API_BASE_URL.trim() !== '') ? import.meta.env.VITE_API_BASE_URL.trim() : (import.meta.env.DEV ? 'http://localhost:5000' : '');
+      const response = await fetch(`${apiUrl}/api/auth/professional-info`, {
         method: 'POST',
         credentials: 'include', // Required for CORS with credentials
         headers,

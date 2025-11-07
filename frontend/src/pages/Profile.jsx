@@ -297,7 +297,8 @@ const Profile = () => {
 
       console.log('📁 Fetching documents for profile page:', email);
       
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/api/auth/get-documents-by-email?email=${encodeURIComponent(email)}`, {
+      const apiUrl = (import.meta.env.VITE_API_BASE_URL && import.meta.env.VITE_API_BASE_URL.trim() !== '') ? import.meta.env.VITE_API_BASE_URL.trim() : (import.meta.env.DEV ? 'http://localhost:5000' : '');
+      const response = await fetch(`${apiUrl}/api/auth/get-documents-by-email?email=${encodeURIComponent(email)}`, {
         credentials: 'include', // Required for CORS with credentials
         method: 'GET',
         headers: { 'Content-Type': 'application/json' }
