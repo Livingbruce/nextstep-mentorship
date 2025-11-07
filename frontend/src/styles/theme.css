@@ -1,0 +1,651 @@
+/* Light theme (default) - Counseling department colors */
+:root {
+  --bg-primary: #fafafa;
+  --bg-secondary: #f0f4f8;
+  --bg-tertiary: #e2e8f0;
+  --text-primary: #1a202c;
+  --text-secondary: #2d3748;
+  --text-muted: #718096;
+  --border-color: #cbd5e0;
+  --border-light: #e2e8f0;
+  --shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 4px 20px rgba(0, 0, 0, 0.15);
+  --card-bg: #f8fafc;
+  --input-bg: #ffffff;
+  --input-border: #a0aec0;
+  --input-focus: #3182ce;
+  --btn-primary: #3182ce;
+  --btn-primary-hover: #2c5aa0;
+  --btn-secondary: #718096;
+  --btn-secondary-hover: #4a5568;
+  --btn-danger: #e53e3e;
+  --btn-danger-hover: #c53030;
+  --btn-success: #38a169;
+  --btn-success-hover: #2f855a;
+  --btn-warning: #d69e2e;
+  --btn-warning-hover: #b7791f;
+  --btn-info: #3182ce;
+  --btn-info-hover: #2c5aa0;
+  --alert-info: #ebf8ff;
+  --alert-info-text: #2c5aa0;
+  --alert-success: #f0fff4;
+  --alert-success-text: #2f855a;
+  --alert-warning: #fffbeb;
+  --alert-warning-text: #b7791f;
+  --alert-danger: #fed7d7;
+  --alert-danger-text: #c53030;
+  --sidebar-bg: #f0f4f8;
+  --sidebar-hover: #e2e8f0;
+  --header-bg: #f8fafc;
+  --accent-color: #3182ce;
+  --accent-hover: #2c5aa0;
+  --message-bg: #f1f3f4;
+  --hover-bg: #f8f9fa;
+  --card-background: var(--card-bg);
+  --button-primary: var(--btn-primary);
+  --button-primary-hover: var(--btn-primary-hover);
+  
+  /* Counseling department colors */
+  --counseling-primary: #4a90e2;
+  --counseling-primary-hover: #357abd;
+  --counseling-secondary: #7b68ee;
+  --counseling-secondary-hover: #6a5acd;
+  --counseling-accent: #20b2aa;
+  --counseling-accent-hover: #1e9b94;
+  --counseling-warm: #ff6b6b;
+  --counseling-warm-hover: #ff5252;
+  --counseling-cool: #4ecdc4;
+  --counseling-cool-hover: #45b7b8;
+}
+
+/* Dark theme - Counseling department colors with reduced white */
+.dark {
+  --bg-primary: #0f1419;
+  --bg-secondary: #1a1f2e;
+  --bg-tertiary: #2d3748;
+  --text-primary: #f7fafc;
+  --text-secondary: #e2e8f0;
+  --text-muted: #a0aec0;
+  --border-color: #4a5568;
+  --border-light: #2d3748;
+  --shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 4px 20px rgba(0, 0, 0, 0.6);
+  --card-bg: #1a1f2e;
+  --input-bg: #2d3748;
+  --input-border: #4a5568;
+  --input-focus: #4a90e2;
+  --btn-primary: #4a90e2;
+  --btn-primary-hover: #357abd;
+  --btn-secondary: #4a5568;
+  --btn-secondary-hover: #718096;
+  --btn-danger: #e53e3e;
+  --btn-danger-hover: #c53030;
+  --btn-success: #38a169;
+  --btn-success-hover: #2f855a;
+  --btn-warning: #d69e2e;
+  --btn-warning-hover: #b7791f;
+  --btn-info: #4a90e2;
+  --btn-info-hover: #357abd;
+  --alert-info: #1a365d;
+  --alert-info-text: #f7fafc;
+  --alert-success: #1a202c;
+  --alert-success-text: #f7fafc;
+  --alert-warning: #2d3748;
+  --alert-warning-text: #f7fafc;
+  --alert-danger: #2d1b1b;
+  --alert-danger-text: #f7fafc;
+  --sidebar-bg: #1a1f2e;
+  --sidebar-hover: #2d3748;
+  --header-bg: #0f1419;
+  --accent-color: #4a90e2;
+  --accent-hover: #357abd;
+  --message-bg: #2d3748;
+  --hover-bg: #1a202c;
+  --card-background: var(--card-bg);
+  --button-primary: var(--btn-primary);
+  --button-primary-hover: var(--btn-primary-hover);
+  
+  /* Counseling department colors for dark theme */
+  --counseling-primary: #4a90e2;
+  --counseling-primary-hover: #357abd;
+  --counseling-secondary: #7b68ee;
+  --counseling-secondary-hover: #6a5acd;
+  --counseling-accent: #20b2aa;
+  --counseling-accent-hover: #1e9b94;
+  --counseling-warm: #ff6b6b;
+  --counseling-warm-hover: #ff5252;
+  --counseling-cool: #4ecdc4;
+  --counseling-cool-hover: #45b7b8;
+}
+
+/* Apply theme variables */
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Global form element theming to ensure consistency in dark mode */
+input,
+textarea,
+select {
+  background-color: var(--input-bg);
+  color: var(--text-primary);
+  border: 1px solid var(--input-border);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-muted);
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: var(--input-focus);
+  box-shadow: 0 0 0 0.2rem rgba(77, 171, 247, 0.15);
+}
+
+.card {
+  background-color: var(--card-bg);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow);
+  transition: background-color 0.3s ease, border-color 0.3s ease;
+}
+
+.form-control {
+  background-color: var(--input-bg);
+  border: 1px solid var(--input-border);
+  color: var(--text-primary);
+  transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;
+}
+
+.form-control:focus {
+  background-color: var(--input-bg);
+  border-color: var(--input-focus);
+  color: var(--text-primary);
+  box-shadow: 0 0 0 0.2rem rgba(77, 171, 247, 0.25);
+}
+
+.btn-primary {
+  background-color: var(--btn-primary);
+  border-color: var(--btn-primary);
+}
+
+.btn-primary:hover {
+  background-color: var(--btn-primary-hover);
+  border-color: var(--btn-primary-hover);
+}
+
+.btn-secondary {
+  background-color: var(--btn-secondary);
+  border-color: var(--btn-secondary);
+}
+
+.btn-secondary:hover {
+  background-color: var(--btn-secondary-hover);
+  border-color: var(--btn-secondary-hover);
+}
+
+.btn-danger {
+  background-color: var(--btn-danger);
+  border-color: var(--btn-danger);
+}
+
+.btn-danger:hover {
+  background-color: var(--btn-danger-hover);
+  border-color: var(--btn-danger-hover);
+}
+
+.btn-success {
+  background-color: var(--btn-success);
+  border-color: var(--btn-success);
+}
+
+.btn-success:hover {
+  background-color: var(--btn-success-hover);
+  border-color: var(--btn-success-hover);
+}
+
+.alert-info {
+  background-color: var(--alert-info);
+  color: var(--alert-info-text);
+  border-color: var(--alert-info);
+}
+
+.alert-success {
+  background-color: var(--alert-success);
+  color: var(--alert-success-text);
+  border-color: var(--alert-success);
+}
+
+.alert-warning {
+  background-color: var(--alert-warning);
+  color: var(--alert-warning-text);
+  border-color: var(--alert-warning);
+}
+
+.alert-danger {
+  background-color: var(--alert-danger);
+  color: var(--alert-danger-text);
+  border-color: var(--alert-danger);
+}
+
+.navbar {
+  background-color: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.navbar-brand,
+.navbar-nav .nav-link {
+  color: var(--text-primary);
+}
+
+.navbar-nav .nav-link:hover {
+  color: var(--text-secondary);
+}
+
+.table {
+  color: var(--text-primary);
+}
+
+.table-striped tbody tr:nth-of-type(odd) {
+  background-color: var(--bg-secondary);
+}
+
+.modal-content {
+  background-color: var(--card-bg);
+  border: 1px solid var(--border-color);
+}
+
+.modal-header {
+  border-bottom: 1px solid var(--border-color);
+}
+
+.modal-footer {
+  border-top: 1px solid var(--border-color);
+}
+
+.dropdown-menu {
+  background-color: var(--card-bg);
+  border: 1px solid var(--border-color);
+}
+
+.dropdown-item {
+  color: var(--text-primary);
+}
+
+.dropdown-item:hover {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+/* Professional Dashboard Styling */
+.dashboard-container {
+  min-height: 100vh;
+  background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+}
+
+/* Modern Card Design */
+.modern-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  transition: all 0.3s ease;
+  overflow: hidden;
+}
+
+.modern-card:hover {
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-2px);
+}
+
+/* Professional Button Styles */
+.btn-modern {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 24px;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-decoration: none;
+  gap: 8px;
+}
+
+.btn-modern:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.btn-modern:active {
+  transform: translateY(0);
+}
+
+.btn-primary-modern {
+  background: var(--btn-primary);
+  color: white;
+}
+
+.btn-primary-modern:hover {
+  background: var(--btn-primary-hover);
+}
+
+.btn-secondary-modern {
+  background: var(--btn-secondary);
+  color: var(--text-primary);
+}
+
+.btn-secondary-modern:hover {
+  background: var(--btn-secondary-hover);
+}
+
+.btn-danger-modern {
+  background: var(--btn-danger);
+  color: white;
+}
+
+.btn-danger-modern:hover {
+  background: var(--btn-danger-hover);
+}
+
+.btn-success-modern {
+  background: var(--btn-success);
+  color: white;
+}
+
+.btn-success-modern:hover {
+  background: var(--btn-success-hover);
+}
+
+/* Modern Input Styles */
+.input-modern {
+  width: 100%;
+  padding: 12px 16px;
+  border: 2px solid var(--input-border);
+  border-radius: 8px;
+  background: var(--input-bg);
+  color: var(--text-primary);
+  font-size: 14px;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
+}
+
+.input-modern:focus {
+  outline: none;
+  border-color: var(--input-focus);
+  box-shadow: 0 0 0 3px rgba(0, 168, 132, 0.1);
+}
+
+.input-modern::placeholder {
+  color: var(--text-muted);
+}
+
+/* Modern Table Styles */
+.table-modern {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--card-bg);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+.table-modern th {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-weight: 600;
+  padding: 16px;
+  text-align: left;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.table-modern td {
+  padding: 16px;
+  border-bottom: 1px solid var(--border-light);
+  color: var(--text-primary);
+}
+
+.table-modern tr:hover {
+  background: var(--bg-secondary);
+}
+
+/* Status Badges */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.status-pending {
+  background: rgba(255, 193, 7, 0.2);
+  color: #ffc107;
+  border: 1px solid rgba(255, 193, 7, 0.3);
+}
+
+.status-confirmed {
+  background: rgba(0, 168, 132, 0.2);
+  color: #00a884;
+  border: 1px solid rgba(0, 168, 132, 0.3);
+}
+
+.status-cancelled {
+  background: rgba(241, 92, 109, 0.2);
+  color: #f15c6d;
+  border: 1px solid rgba(241, 92, 109, 0.3);
+}
+
+/* Loading Spinner */
+.loading-spinner {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border-color);
+  border-radius: 50%;
+  border-top-color: var(--accent-color);
+  animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Notification Styles */
+.notification {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  padding: 16px 20px;
+  border-radius: 8px;
+  color: white;
+  font-weight: 500;
+  box-shadow: var(--shadow-lg);
+  z-index: 1000;
+  animation: slideIn 0.3s ease;
+}
+
+.notification-success {
+  background: var(--btn-success);
+}
+
+.notification-error {
+  background: var(--btn-danger);
+}
+
+.notification-warning {
+  background: var(--btn-warning);
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* Counseling Department Color Classes */
+.counseling-primary {
+  background: var(--counseling-primary);
+  color: white;
+}
+
+.counseling-primary:hover {
+  background: var(--counseling-primary-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(74, 144, 226, 0.3);
+}
+
+.counseling-secondary {
+  background: var(--counseling-secondary);
+  color: white;
+}
+
+.counseling-secondary:hover {
+  background: var(--counseling-secondary-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(123, 104, 238, 0.3);
+}
+
+.counseling-accent {
+  background: var(--counseling-accent);
+  color: white;
+}
+
+.counseling-accent:hover {
+  background: var(--counseling-accent-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(32, 178, 170, 0.3);
+}
+
+.counseling-warm {
+  background: var(--counseling-warm);
+  color: white;
+}
+
+.counseling-warm:hover {
+  background: var(--counseling-warm-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(255, 107, 107, 0.3);
+}
+
+.counseling-cool {
+  background: var(--counseling-cool);
+  color: white;
+}
+
+.counseling-cool:hover {
+  background: var(--counseling-cool-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(78, 205, 196, 0.3);
+}
+
+/* Stats Cards with Counseling Colors */
+.stats-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  transition: all 0.3s ease;
+  overflow: hidden;
+  position: relative;
+}
+
+.stats-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lg);
+}
+
+.stats-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: var(--counseling-primary);
+  transition: all 0.3s ease;
+}
+
+.stats-card:hover::before {
+  background: var(--counseling-primary-hover);
+  height: 6px;
+}
+
+/* Quick Actions with Counseling Colors */
+.quick-action-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  transition: all 0.3s ease;
+  overflow: hidden;
+  position: relative;
+  cursor: pointer;
+}
+
+.quick-action-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lg);
+  border-color: var(--counseling-primary);
+}
+
+.quick-action-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--counseling-primary);
+  transition: all 0.3s ease;
+}
+
+.quick-action-card:hover::before {
+  background: var(--counseling-primary-hover);
+  height: 5px;
+}
+
+/* Icon containers with counseling colors */
+.icon-container {
+  transition: all 0.3s ease;
+}
+
+.quick-action-card:hover .icon-container {
+  transform: scale(1.1);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .dashboard-container {
+    padding: 10px;
+  }
+  
+  .modern-card {
+    margin-bottom: 16px;
+  }
+  
+  .btn-modern {
+    padding: 10px 16px;
+    font-size: 13px;
+  }
+  
+  .stats-card:hover,
+  .quick-action-card:hover {
+    transform: translateY(-2px);
+  }
+}
