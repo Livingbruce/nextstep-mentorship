@@ -23,6 +23,8 @@ EMAIL_HOST=smtp.gmail.com
 EMAIL_PORT=587
 EMAIL_USER=your-email@gmail.com
 EMAIL_PASS=your-app-password
+# Local development (optional)
+LOCAL_API_URL=http://localhost:5000
 ```
 
 ### Step 2: Set Frontend Environment Variable (Optional)

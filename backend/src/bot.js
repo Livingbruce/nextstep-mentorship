@@ -16,8 +16,17 @@ const bot = new Telegraf(process.env.BOT_TOKEN);
 
 // Helper function to get API URL
 const sanitizeUrl = (value) => value.replace(/\/$/, '');
+const isProduction = process.env.NODE_ENV === 'production';
 
 const getApiUrl = () => {
+  // In development, always prefer local backend unless explicitly overridden
+  if (!isProduction) {
+    if (process.env.LOCAL_API_URL && process.env.LOCAL_API_URL.trim() !== '') {
+      return sanitizeUrl(process.env.LOCAL_API_URL.trim());
+    }
+    return 'http://localhost:5000';
+  }
+
   // Highest priority: explicit API_URL or BACKEND_URL
   if (process.env.API_URL && process.env.API_URL.trim() !== '') {
     return sanitizeUrl(process.env.API_URL.trim());
@@ -52,7 +61,7 @@ const getApiUrl = () => {
     }
   }
 
-  return 'http://localhost:5000';
+  return sanitizeUrl('http://localhost:5000');
 };
 
 // User session management
