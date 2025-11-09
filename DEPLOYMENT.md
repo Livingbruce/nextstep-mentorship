@@ -1,49 +1,67 @@
-# Deployment Guide
+# Deployment Guide (Vercel)
 
-## Netlify Deployment
+The repository hosts both the **frontend (Vite + React)** and the **backend (Express API + Telegram bot)**. Deploy each to its own Vercel project using the steps below.
 
-This application is configured to deploy on Netlify with both frontend and backend.
+---
 
-### Automatic Deployment
+## 1. Frontend (`frontend/`)
 
-1. Push to GitHub - Netlify will auto-deploy
-2. Set environment variables in Netlify dashboard
-3. Wait for deployment to complete
+1. Create a new Vercel project and select the GitHub repository.
+2. When prompted for the project root, choose `frontend`.
+3. Build settings:
+   - **Build Command:** `npm run build`
+   - **Install Command:** `npm install`
+   - **Output Directory:** `dist`
+4. Environment variables (optional):
+   - `VITE_API_BASE_URL` – leave empty to call the backend project directly using an absolute URL in runtime configuration.
 
-### Environment Variables
+After the first deployment finishes, note the generated production URL (e.g. `https://nextstep-mentorship-frontend.vercel.app`). Set this value as `FRONTEND_URL` in the backend project.
 
-**Required Backend Variables:**
-```
-DATABASE_URL=postgresql://user:password@host:port/database
-JWT_SECRET=your-secret-key
-NODE_ENV=production
-FRONTEND_URL=https://your-site.netlify.app
-```
+---
 
-**Optional Frontend Variable:**
-```
-VITE_API_BASE_URL=
-```
-Leave empty to use relative URLs (recommended - no CORS issues).
+## 2. Backend (`backend/`)
 
-### How It Works
+1. Create a second Vercel project pointing to the same GitHub repo.
+2. Set the project root to `backend`.
+3. Build/Deployment settings:
+   - **Build Command:** `npm install`
+   - **Output Directory:** (leave empty)
+   - Vercel detects the `api/index.js` serverless function automatically.
+4. Environment variables (configure in Vercel dashboard):
+   - `DATABASE_URL`
+   - `JWT_SECRET`
+   - `NODE_ENV=production`
+   - `FRONTEND_URL=https://<your-frontend-domain>`
+   - `API_URL=https://<your-backend-domain>`
+   - `LOCAL_API_URL` *(optional for local development)*
+   - `BOT_TOKEN` *(optional – only if the Telegram bot should run inside Vercel; otherwise host the bot elsewhere)*
 
-- **Frontend**: Served as static site from `frontend/dist/`
-- **Backend**: Runs as Netlify Function at `/.netlify/functions/api`
-- **API Routes**: `/api/*` redirects to Netlify Function
-- **Same Domain**: No CORS issues!
+> **Note:** The backend uses `serverless-http` to expose the existing Express app through `backend/api/index.js`. The Telegram bot only launches when `process.env.BOT_TOKEN` is set and Vercel is not running (see `src/index.js`).
 
-### Testing
+---
 
-After deployment:
-1. Visit: `https://your-site.netlify.app`
-2. Test: `https://your-site.netlify.app/api/health`
-3. Should return: `{"status":"ok"}`
+## 3. Local Development
 
-### Troubleshooting
+1. Start the backend: `cd backend && npm run dev`
+2. Start the frontend: `cd frontend && npm run dev`
+3. Verify the API URL used by the bot and the frontend:
+   - Frontend uses `VITE_API_BASE_URL`
+   - Bot uses `LOCAL_API_URL` (fallback `http://localhost:5000`)
 
-- Check Netlify build logs
-- Verify environment variables are set
-- Check function logs in Netlify dashboard
-- Ensure database is accessible from Netlify
+---
 
+## 4. Post-Deployment Checklist
+
+- Frontend loads at the Vercel domain and calls the backend without CORS errors.
+- Backend responds at `https://<backend-domain>/api/health` with `{"status":"ok"}`.
+- Telegram bot commands (Activities, Announcements, Books) fetch data successfully.
+- Environment variables are set in both projects.
+
+---
+
+## 5. Troubleshooting
+
+- Check Vercel build logs for each project.
+- Confirm that the backend project has the correct environment variables.
+- Verify that `API_URL` points to the deployed backend domain.
+- For local bot testing, set `LOCAL_API_URL=http://localhost:5000`.

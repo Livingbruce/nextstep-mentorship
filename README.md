@@ -20,7 +20,7 @@ A complete authentication and counseling services platform for Maseno University
 - **Backend**: Node.js, Express.js
 - **Database**: PostgreSQL
 - **Authentication**: JWT (JSON Web Tokens)
-- **Deployment**: Netlify (Frontend + Backend Functions)
+- **Deployment**: Vercel (separate frontend & backend projects)
 
 ## 📋 Prerequisites
 
@@ -51,18 +51,20 @@ npm install
 
 3. Set up environment variables:
 
-**Backend** (`.env` in `backend/` directory):
-```
+**Backend** (`backend/.env`):
+```bash
 DATABASE_URL=postgresql://user:password@host:port/database
 JWT_SECRET=your-super-secret-jwt-key-here
 NODE_ENV=development
 PORT=5000
 FRONTEND_URL=http://localhost:3000
+LOCAL_API_URL=http://localhost:5000
 ```
 
-**Frontend** (`.env` in `frontend/` directory):
-```
-VITE_API_BASE_URL=http://localhost:5000
+**Frontend** (`frontend/.env`):
+```bash
+# Leave empty to use runtime configuration
+VITE_API_BASE_URL=
 ```
 
 4. Start development servers:
@@ -77,24 +79,8 @@ npm run dev
 
 ## 🌐 Deployment
 
-### Netlify Deployment
-
-The application is configured to deploy on Netlify with:
-- Frontend served as static site
-- Backend running as Netlify Functions (same domain = no CORS issues)
-
-**Environment Variables** (Set in Netlify Dashboard):
-
-**Backend:**
-- `DATABASE_URL` - PostgreSQL connection string
-- `JWT_SECRET` - Secret key for JWT tokens
-- `NODE_ENV=production`
-- `FRONTEND_URL` - Your Netlify frontend URL
-
-**Frontend:**
-- `VITE_API_BASE_URL` - Leave empty to use relative URLs (recommended)
-
-See `NETLIFY_BACKEND_SETUP.md` for detailed deployment instructions.
+Deploy both apps to Vercel as separate projects. The frontend uses the `frontend/` directory and the backend uses the `backend/` directory (serverless function at `api/index.js`).  
+See `DEPLOYMENT.md` for a detailed step-by-step guide, including required environment variables.
 
 ## 📁 Project Structure
 
@@ -107,8 +93,7 @@ nextstep-mentorship/
 │   │   ├── middleware/       # Auth & security middleware
 │   │   ├── db/              # Database connection
 │   │   └── index.js         # Express app entry point
-│   ├── netlify/
-│   │   └── functions/       # Netlify Functions
+│   ├── api/                 # Serverless entry point for Vercel
 │   └── package.json
 ├── frontend/
 │   ├── src/
@@ -117,7 +102,7 @@ nextstep-mentorship/
 │   │   ├── utils/           # API utilities
 │   │   └── main.jsx         # React entry point
 │   └── package.json
-└── netlify.toml             # Netlify configuration
+└── README.md
 ```
 
 ## 🔑 API Endpoints
