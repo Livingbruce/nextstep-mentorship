@@ -92,6 +92,17 @@ async function ensureTelegramWebhook() {
   return telegramWebhookSetupPromise;
 }
 
+if (isVercelDeployment && process.env.BOT_TOKEN) {
+  ensureTelegramWebhook().catch((error) => {
+    console.error('⚠️  Initial Telegram webhook registration failed:', error);
+  });
+}
+
+if (isVercelDeployment && process.env.BOT_TOKEN) {
+  ensureTelegramWebhook().catch((error) => {
+    console.error('⚠️  Initial Telegram webhook registration failed:', error);
+  });
+}
 
 const normalizeOrigin = (origin) => {
   if (!origin) return origin;
@@ -190,11 +201,9 @@ if (isVercelDeployment && process.env.BOT_TOKEN) {
   const telegramWebhookMiddleware = bot.webhookCallback(TELEGRAM_WEBHOOK_PATH);
 
   app.post(TELEGRAM_WEBHOOK_PATH, async (req, res, next) => {
-    try {
-      await ensureTelegramWebhook();
-    } catch (error) {
+    ensureTelegramWebhook().catch((error) => {
       console.error('⚠️  Telegram webhook registration deferred:', error);
-    }
+    });
     return telegramWebhookMiddleware(req, res, next);
   });
 
