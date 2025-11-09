@@ -83,87 +83,36 @@ const isAllowedOrigin = (origin) => {
   return false;
 };
 
-// CORS origin function to handle both with and without trailing slash
-const corsOrigin = (origin, callback) => {
-  // Allow requests with no origin (like mobile apps or curl requests)
-  if (!origin) return callback(null, true);
+// Emergency permissive CORS configuration (allows any origin)
+app.use(
+  cors({
+    origin: (origin, callback) => callback(null, true),
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    exposedHeaders: ['Content-Type', 'Authorization'],
+    maxAge: 86400,
+  })
+);
 
-  // Normalize the origin (remove trailing slash)
-  const normalizedOrigin = normalizeOrigin(origin);
-
-  if (isAllowedOrigin(normalizedOrigin)) {
-    return callback(null, normalizedOrigin);
-  }
-
-  return callback(new Error('Not allowed by CORS'));
-};
-
-// Security middleware (order matters!)
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      scriptSrc: ["'self'"],
-      imgSrc: ["'self'", "data:", "https:"],
-      connectSrc: ["'self'"],
-      fontSrc: ["'self'"],
-      objectSrc: ["'none'"],
-      mediaSrc: ["'self'"],
-      frameSrc: ["'none'"],
-    },
-  },
-  crossOriginEmbedderPolicy: false
-}));
-
-// CORS logging middleware (for debugging)
-app.use((req, res, next) => {
-  if (req.method === 'OPTIONS' || req.headers.origin) {
-    console.log(`[CORS] ${req.method} ${req.path} - Origin: ${req.headers.origin || 'none'}`);
-  }
-  next();
-});
-
-// CORS configuration with origin function
-app.use(cors({
-  origin: corsOrigin,
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-  exposedHeaders: ['Content-Type', 'Authorization'],
-  maxAge: 86400 // 24 hours
-}));
-
-// Explicit OPTIONS handler for preflight requests
+// Explicit OPTIONS handler for preflight requests (mirrors the permissive policy)
 app.options('*', (req, res) => {
-  const origin = req.headers.origin;
-  const normalizedOrigin = normalizeOrigin(origin);
-
-  if (isAllowedOrigin(normalizedOrigin)) {
-    res.header('Access-Control-Allow-Origin', normalizedOrigin);
-    res.header('Access-Control-Allow-Credentials', 'true');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
-    res.header('Access-Control-Max-Age', '86400');
-    res.sendStatus(204);
-  } else {
-    console.log(`[CORS] OPTIONS request rejected - Origin: ${origin}`);
-    res.sendStatus(403);
-  }
+  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  res.header('Access-Control-Max-Age', '86400');
+  res.sendStatus(204);
 });
 
-// Explicit header override - MUST run after cors middleware
-// This ensures we ALWAYS set normalized origin (no trailing slash)
+// Explicit header override to ensure the response mirrors the request origin
 app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  if (origin) {
-    const normalizedOrigin = normalizeOrigin(origin);
-
-    if (isAllowedOrigin(normalizedOrigin)) {
-      res.removeHeader('Access-Control-Allow-Origin');
-      res.header('Access-Control-Allow-Origin', normalizedOrigin);
-      res.header('Access-Control-Allow-Credentials', 'true');
-    }
+  if (req.headers.origin) {
+    res.removeHeader('Access-Control-Allow-Origin');
+    res.header('Access-Control-Allow-Origin', req.headers.origin);
+    res.header('Access-Control-Allow-Credentials', 'true');
+  } else {
+    res.header('Access-Control-Allow-Origin', '*');
   }
   res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS,PATCH');
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
