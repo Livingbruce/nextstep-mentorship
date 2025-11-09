@@ -63,6 +63,9 @@ LOCAL_API_URL=http://localhost:5000
 ALLOWED_ORIGINS=
 # Optional: allow any https://*.vercel.app origins (use "true" in Vercel)
 ALLOW_VERCEL_PREVIEWS=false
+# Telegram bot configuration
+BOT_TOKEN=
+TELEGRAM_WEBHOOK_URL=
 ```
 
 **Frontend** (`frontend/.env`):

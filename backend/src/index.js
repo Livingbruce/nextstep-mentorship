@@ -42,6 +42,54 @@ dotenv.config({ path: path.join(__dirname, "../.env") });
 
 const app = express();
 
+const isVercelDeployment = process.env.VERCEL === '1';
+const TELEGRAM_WEBHOOK_PATH = '/api/telegram/webhook';
+let telegramWebhookSetupPromise = null;
+
+const resolveTelegramWebhookUrl = () => {
+  const explicit = process.env.TELEGRAM_WEBHOOK_URL && process.env.TELEGRAM_WEBHOOK_URL.trim();
+  if (explicit) return explicit;
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}${TELEGRAM_WEBHOOK_PATH}`;
+  }
+  return null;
+};
+
+async function ensureTelegramWebhook() {
+  if (!process.env.BOT_TOKEN) {
+    return;
+  }
+
+  if (telegramWebhookSetupPromise) {
+    return telegramWebhookSetupPromise;
+  }
+
+  const webhookUrl = resolveTelegramWebhookUrl();
+  if (!webhookUrl) {
+    console.warn('⚠️  TELEGRAM_WEBHOOK_URL not set and VERCEL_URL unavailable; skipping webhook registration.');
+    telegramWebhookSetupPromise = Promise.resolve();
+    return telegramWebhookSetupPromise;
+  }
+
+  telegramWebhookSetupPromise = (async () => {
+    try {
+      const info = await bot.telegram.getWebhookInfo();
+      if (info.url !== webhookUrl) {
+        await bot.telegram.setWebhook(webhookUrl, {
+          allowed_updates: ['message', 'callback_query', 'inline_query'],
+        });
+        console.log(`✅ Telegram webhook registered at ${webhookUrl}`);
+      }
+    } catch (error) {
+      console.error('❌ Failed to register Telegram webhook:', error);
+      telegramWebhookSetupPromise = null;
+      throw error;
+    }
+  })();
+
+  return telegramWebhookSetupPromise;
+}
+
 
 const normalizeOrigin = (origin) => {
   if (!origin) return origin;
@@ -135,6 +183,29 @@ app.use(slowDown({
 // Body parsing with size limits
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+if (isVercelDeployment && process.env.BOT_TOKEN) {
+  const telegramWebhookMiddleware = bot.webhookCallback(TELEGRAM_WEBHOOK_PATH);
+
+  app.post(TELEGRAM_WEBHOOK_PATH, async (req, res, next) => {
+    try {
+      await ensureTelegramWebhook();
+    } catch (error) {
+      console.error('⚠️  Telegram webhook registration deferred:', error);
+    }
+    return telegramWebhookMiddleware(req, res, next);
+  });
+
+  app.get(TELEGRAM_WEBHOOK_PATH, async (_req, res) => {
+    try {
+      await ensureTelegramWebhook();
+      res.status(200).json({ ok: true });
+    } catch (error) {
+      console.error('⚠️  Telegram webhook health check failed:', error);
+      res.status(500).json({ ok: false, error: 'webhook registration failed' });
+    }
+  });
+}
 
 // Data sanitization
 app.use(mongoSanitize());
