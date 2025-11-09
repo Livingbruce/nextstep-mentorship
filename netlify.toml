@@ -1,12 +1,16 @@
 [build]
-  base = "frontend"
-  publish = "dist"
-  command = "npm install && npm run build"
+  # Build from root to handle both frontend and backend
+  base = "."
+  publish = "frontend/dist"
+  # Install backend dependencies (needed for functions), install function dependencies, then frontend, then build
+  command = "cd backend && npm install && cd netlify/functions && npm install && cd ../../frontend && npm install && npm run build"
 
 # Netlify Functions for backend API
 # Functions directory is relative to repository root
 [functions]
   directory = "backend/netlify/functions"
+  # Node version for functions
+  node_bundler = "esbuild"
 
 # Redirect API calls to Netlify Functions
 [[redirects]]
