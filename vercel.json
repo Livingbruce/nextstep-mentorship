@@ -2,12 +2,11 @@
   "version": 2,
   "installCommand": "npm install --prefix frontend && npm install --prefix backend",
   "buildCommand": "npm run build --prefix frontend && node scripts/copy-static.js",
-  "builds": [
-    {
-      "src": "backend/api/index.js",
-      "use": "@vercel/node"
+  "functions": {
+    "backend/api/index.js": {
+      "runtime": "nodejs20.x"
     }
-  ],
+  },
   "routes": [
     { "src": "/api/(.*)", "dest": "backend/api/index.js" },
     { "handle": "filesystem" },
