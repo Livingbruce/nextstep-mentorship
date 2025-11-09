@@ -1,7 +1,7 @@
 {
   "version": 2,
   "installCommand": "npm install --prefix frontend && npm install --prefix backend",
-  "buildCommand": "npm run build --prefix frontend",
+  "buildCommand": "npm run build --prefix frontend && mkdir -p .vercel/output/static && cp -r frontend/dist/. .vercel/output/static",
   "outputDirectory": "frontend/dist",
   "builds": [
     {
