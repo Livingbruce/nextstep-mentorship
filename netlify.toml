@@ -1,7 +1,8 @@
 [build]
   # Build from frontend directory to ensure vite is available
   base = "frontend"
-  command = "npm install && npm run build"
+  # Install all dependencies including devDependencies (needed for vite)
+  command = "npm install --include=dev && npm run build"
   publish = "dist"
 
 # Netlify Functions for backend API
