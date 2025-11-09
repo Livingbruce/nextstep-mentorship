@@ -59,6 +59,10 @@ NODE_ENV=development
 PORT=5000
 FRONTEND_URL=http://localhost:3000
 LOCAL_API_URL=http://localhost:5000
+# Optional: comma-separated additional origins
+ALLOWED_ORIGINS=
+# Optional: allow any https://*.vercel.app origins (use "true" in Vercel)
+ALLOW_VERCEL_PREVIEWS=false
 ```
 
 **Frontend** (`frontend/.env`):

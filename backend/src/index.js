@@ -45,33 +45,56 @@ const app = express();
 
 const normalizeOrigin = (origin) => {
   if (!origin) return origin;
-  return origin.replace(/\/+$/, ''); // Remove trailing slashes
+  return origin.replace(/\/+$|\s+$/g, ''); // Remove trailing slashes and whitespace
 };
 
-// Get allowed origins
-const frontendUrl = normalizeOrigin(process.env.FRONTEND_URL || 'http://localhost:3000');
-const allowedOrigins = [
-  frontendUrl,
-  `${frontendUrl}/`, // Also allow with trailing slash for flexibility
+const parseOrigins = (value) => {
+  if (!value) return [];
+  return value
+    .split(',')
+    .map((item) => normalizeOrigin(item.trim()))
+    .filter(Boolean);
+};
+
+const allowVercelPreviews = process.env.ALLOW_VERCEL_PREVIEWS === 'true';
+
+const allowedOriginsSet = new Set([
+  ...parseOrigins(process.env.FRONTEND_URL),
+  ...parseOrigins(process.env.ALLOWED_ORIGINS),
   'http://localhost:3000',
   'http://localhost:5000'
-].filter(Boolean);
+]);
+
+const isAllowedOrigin = (origin) => {
+  if (!origin) return true;
+  const normalized = normalizeOrigin(origin);
+
+  if (allowedOriginsSet.has(normalized)) {
+    return true;
+  }
+
+  if (
+    allowVercelPreviews &&
+    /^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(normalized)
+  ) {
+    return true;
+  }
+
+  return false;
+};
 
 // CORS origin function to handle both with and without trailing slash
 const corsOrigin = (origin, callback) => {
   // Allow requests with no origin (like mobile apps or curl requests)
   if (!origin) return callback(null, true);
-  
+
   // Normalize the origin (remove trailing slash)
   const normalizedOrigin = normalizeOrigin(origin);
-  
-  // Check if normalized origin is in allowed list
-  if (allowedOrigins.some(allowed => normalizeOrigin(allowed) === normalizedOrigin)) {
-    // Return the normalized origin (without trailing slash) to match browser expectation
+
+  if (isAllowedOrigin(normalizedOrigin)) {
     return callback(null, normalizedOrigin);
   }
-  
-  // Reject the request
+
   return callback(new Error('Not allowed by CORS'));
 };
 
@@ -115,9 +138,8 @@ app.use(cors({
 app.options('*', (req, res) => {
   const origin = req.headers.origin;
   const normalizedOrigin = normalizeOrigin(origin);
-  
-  // Check if origin is allowed
-  if (allowedOrigins.some(allowed => normalizeOrigin(allowed) === normalizedOrigin)) {
+
+  if (isAllowedOrigin(normalizedOrigin)) {
     res.header('Access-Control-Allow-Origin', normalizedOrigin);
     res.header('Access-Control-Allow-Credentials', 'true');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
@@ -135,14 +157,11 @@ app.options('*', (req, res) => {
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   if (origin) {
-    // ALWAYS normalize - remove trailing slash
     const normalizedOrigin = normalizeOrigin(origin);
-    
-    // Check if normalized origin is allowed
-    if (allowedOrigins.some(allowed => normalizeOrigin(allowed) === normalizedOrigin)) {
-      // CRITICAL: Always set normalized origin (no trailing slash)
-      res.removeHeader('Access-Control-Allow-Origin'); // Remove any existing header
-      res.header('Access-Control-Allow-Origin', normalizedOrigin); // Set normalized
+
+    if (isAllowedOrigin(normalizedOrigin)) {
+      res.removeHeader('Access-Control-Allow-Origin');
+      res.header('Access-Control-Allow-Origin', normalizedOrigin);
       res.header('Access-Control-Allow-Credentials', 'true');
     }
   }

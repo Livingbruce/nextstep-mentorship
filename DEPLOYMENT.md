@@ -34,6 +34,8 @@ After the first deployment finishes, note the generated production URL (e.g. `ht
    - `FRONTEND_URL=https://<your-frontend-domain>`
    - `API_URL=https://<your-backend-domain>`
    - `LOCAL_API_URL` *(optional for local development)*
+   - `ALLOWED_ORIGINS` *(optional comma-separated list for additional domains)*
+   - `ALLOW_VERCEL_PREVIEWS=true` *(optional to allow any `https://*.vercel.app` origin)*
    - `BOT_TOKEN` *(optional – only if the Telegram bot should run inside Vercel; otherwise host the bot elsewhere)*
 
 > **Note:** The backend uses `serverless-http` to expose the existing Express app through `backend/api/index.js`. The Telegram bot only launches when `process.env.BOT_TOKEN` is set and Vercel is not running (see `src/index.js`).
