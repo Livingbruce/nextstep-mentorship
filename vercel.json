@@ -1,7 +1,7 @@
 {
   "version": 2,
   "installCommand": "npm install --prefix frontend && npm install --prefix backend",
-  "buildCommand": "npm run build --prefix frontend && mkdir -p .vercel/output/static && cp -r frontend/dist/. .vercel/output/static",
+  "buildCommand": "npm run build --prefix frontend && node -e \"const fs=require('fs'); const path=require('path'); const src=path.join('frontend','dist'); const dest=path.join('.vercel','output','static'); fs.mkdirSync(dest,{recursive:true}); fs.cpSync(src,dest,{recursive:true});\"",
   "outputDirectory": "frontend/dist",
   "builds": [
     {
