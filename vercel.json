@@ -2,7 +2,6 @@
   "version": 2,
   "installCommand": "npm install --prefix frontend && npm install --prefix backend",
   "buildCommand": "npm run build --prefix frontend && node scripts/copy-static.js",
-  "outputDirectory": "frontend/dist",
   "builds": [
     {
       "src": "backend/api/index.js",
