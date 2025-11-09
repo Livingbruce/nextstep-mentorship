@@ -3,8 +3,8 @@
   base = "."
   publish = "frontend/dist"
   # Install backend dependencies (needed for functions), install function dependencies, then frontend, then build
-  # Using node_modules/.bin/vite directly to avoid PATH issues
-  command = "cd backend && npm install && cd netlify/functions && npm install && cd ../../../frontend && npm install && ./node_modules/.bin/vite build"
+  # Using npm ci for clean install and npm run build which works on Netlify Linux
+  command = "cd backend && npm ci && cd netlify/functions && npm ci && cd ../../../frontend && npm ci && npm run build"
 
 # Netlify Functions for backend API
 # Functions directory is relative to repository root
