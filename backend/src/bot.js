@@ -3,7 +3,6 @@ import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
 import pool from "./db/pool.js";
-import fetch from "node-fetch";
 import cron from "node-cron";
 import { workingHoursValidator } from "./utils/workingHoursValidator.js";
 import { generateUniqueAppointmentCode } from "./utils/appointmentCodeGenerator.js";
@@ -67,7 +66,142 @@ const getApiUrl = () => {
   return sanitizeUrl('http://localhost:5000');
 };
 
-console.log(`[Telegram Bot] API base URL resolved to: ${getApiUrl()}`);
+const resolvedApiBaseUrl = getApiUrl();
+console.log(`[Telegram Bot] API base URL resolved to: ${resolvedApiBaseUrl}`);
+
+pool.query("SELECT 1")
+  .then(() => console.log("[Telegram Bot] Database connection verified"))
+  .catch((error) => console.error("[Telegram Bot] Database connection check failed:", error));
+
+const createCachedFetcher = (loader, ttlMs = 60_000) => {
+  let cache;
+  let expiresAt = 0;
+  let pending = null;
+
+  return async (...args) => {
+    const now = Date.now();
+
+    if (cache && now < expiresAt) {
+      return cache;
+    }
+
+    if (!pending) {
+      pending = loader(...args)
+        .then((result) => {
+          cache = result;
+          expiresAt = Date.now() + ttlMs;
+          return result;
+        })
+        .finally(() => {
+          pending = null;
+        });
+    }
+
+    return pending;
+  };
+};
+
+const fetchPublicAnnouncements = createCachedFetcher(async () => {
+  const { rows } = await pool.query(
+    `SELECT a.id, a.message, a.created_at, c.name AS counselor_name
+     FROM announcements a
+     LEFT JOIN counselors c ON a.counselor_id = c.id
+     WHERE a.is_active = true
+     ORDER BY a.created_at DESC
+     LIMIT 10`
+  );
+  return rows;
+});
+
+const fetchPublicActivities = createCachedFetcher(async () => {
+  const { rows } = await pool.query(
+    `SELECT a.id, a.title, a.description,
+            a.activity_date::text AS activity_date,
+            a.activity_time::text AS activity_time,
+            c.name AS counselor_name
+     FROM activities a
+     LEFT JOIN counselors c ON a.counselor_id = c.id
+     ORDER BY a.activity_date ASC, a.activity_time ASC
+     LIMIT 10`
+  );
+  return rows;
+});
+
+const fetchAvailableBooks = createCachedFetcher(async () => {
+  const { rows } = await pool.query(
+    `SELECT b.id, b.title, b.author, b.description, b.price_cents, c.name AS counselor_name
+     FROM books b
+     LEFT JOIN counselors c ON b.counselor_id = c.id
+     WHERE COALESCE(b.is_sold, false) = false
+     ORDER BY b.created_at DESC
+     LIMIT 20`
+  );
+  return rows;
+}, 30_000);
+
+async function createPublicBookOrder(order) {
+  const {
+    book_id,
+    client_telegram_id,
+    client_name,
+    client_email,
+    client_phone,
+    client_address,
+    client_city,
+    client_country,
+    client_county,
+    client_postal_code,
+    payment_method,
+    payment_reference,
+    payment_amount_cents,
+    shipping_cost_cents,
+    total_amount_cents,
+  } = order;
+
+  const { rows } = await pool.query(
+    `INSERT INTO book_orders (
+      book_id, client_telegram_id, client_name, client_email, client_phone,
+      client_address, client_city, client_country, client_county, client_postal_code,
+      payment_method, payment_reference, payment_amount_cents, shipping_cost_cents, total_amount_cents
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+    RETURNING *`,
+    [
+      book_id,
+      client_telegram_id,
+      client_name,
+      client_email,
+      client_phone,
+      client_address,
+      client_city,
+      client_country,
+      client_county,
+      client_postal_code,
+      payment_method,
+      payment_reference,
+      payment_amount_cents,
+      shipping_cost_cents,
+      total_amount_cents,
+    ]
+  );
+
+  return rows[0];
+}
+
+async function fetchClientBookOrders(telegramId) {
+  const { rows } = await pool.query(
+    `SELECT bo.*, b.title AS book_title, b.author AS book_author, c.name AS counselor_name
+     FROM book_orders bo
+     JOIN books b ON bo.book_id = b.id
+     JOIN counselors c ON b.counselor_id = c.id
+     WHERE bo.client_telegram_id = $1
+     ORDER BY bo.created_at DESC`,
+    [telegramId]
+  );
+
+  return rows;
+}
+
+const SHIPPING_COST_CENTS = 500;
 
 // User session management
 const userSessions = new Map();
@@ -430,22 +564,24 @@ async function handleBookOrderStep(ctx, session, userId, text) {
   try {
     switch (session.step) {
       case 'list_books': {
-        // Fetch books from the public API endpoint
-        const apiUrl = getApiUrl();
-        const response = await fetch(`${apiUrl}/api/books/public`);
-        if (!response.ok) {
-          throw new Error('Failed to fetch books');
-        }
-        const rows = await response.json();
-        
-        if (!rows || rows.length === 0) {
+        const books = (await fetchAvailableBooks()).map((book) => ({
+          ...book,
+          price_cents:
+            typeof book.price_cents === 'number'
+              ? book.price_cents
+              : Number(book.price_cents ?? 0),
+        }));
+
+        if (!books || books.length === 0) {
           clearBookOrderSession(userId);
           return ctx.reply("📚 **Books for Sale**\n\n⚠️ Coming soon...\n\nNo books are available for sale at the moment. Check back later for new releases!");
         }
-        
+
         let msg = "📚 Available Books for Sale:\n\n";
-        rows.forEach((book, i) => {
-          const price = typeof book.price_cents === 'number' ? `KSh ${(book.price_cents / 100).toFixed(2)}` : 'KSh 0.00';
+        books.forEach((book, i) => {
+          const price = typeof book.price_cents === 'number'
+            ? `KSh ${(book.price_cents / 100).toFixed(2)}`
+            : 'KSh 0.00';
           msg += `${i + 1}. ${book.title} by ${book.author || 'Unknown Author'}\n`;
           msg += `   Price: ${price}\n`;
           if (book.description) msg += `   Description: ${book.description}\n`;
@@ -453,7 +589,7 @@ async function handleBookOrderStep(ctx, session, userId, text) {
         });
         msg += "Do you want to buy a book? Reply with the number of the book you want to purchase, or type 'no' to cancel.";
         session.step = 'choose_book';
-        session.data.books = rows;
+        session.data.books = books;
         return ctx.reply(msg);
       }
       
@@ -535,14 +671,15 @@ async function handleBookOrderStep(ctx, session, userId, text) {
       case 'payment_details': {
         session.data.paymentDetails = text.trim();
         session.step = 'confirm_order';
-        
+
         const book = session.data.selectedBook;
-        const shippingCost = 500; // KSh 500 shipping cost
-        const totalAmount = book.price_cents + shippingCost;
-        
+        const bookPrice = Number(book.price_cents || 0);
+        const shippingCost = SHIPPING_COST_CENTS;
+        const totalAmount = bookPrice + shippingCost;
+
         let confirmMsg = `📋 Order Summary:\n\n`;
         confirmMsg += `📚 Book: ${book.title} by ${book.author || 'Unknown Author'}\n`;
-        confirmMsg += `💰 Book Price: KSh ${(book.price_cents / 100).toFixed(2)}\n`;
+        confirmMsg += `💰 Book Price: KSh ${(bookPrice / 100).toFixed(2)}\n`;
         confirmMsg += `📦 Shipping: KSh ${(shippingCost / 100).toFixed(2)}\n`;
         confirmMsg += `💳 Total: KSh ${(totalAmount / 100).toFixed(2)}\n\n`;
         confirmMsg += `👤 Customer: ${session.data.contactName}\n`;
@@ -554,7 +691,7 @@ async function handleBookOrderStep(ctx, session, userId, text) {
         confirmMsg += `💳 Payment: ${session.data.paymentMethod}\n`;
         confirmMsg += `📝 Details: ${session.data.paymentDetails}\n\n`;
         confirmMsg += `Type 'confirm' to place this order, or 'cancel' to abort.`;
-        
+
         return ctx.reply(confirmMsg);
       }
       
@@ -568,44 +705,43 @@ async function handleBookOrderStep(ctx, session, userId, text) {
           return ctx.reply("Please type 'confirm' to place the order or 'cancel' to abort.");
         }
         
-        // Create the order
         const book = session.data.selectedBook;
-        const shippingCost = 500; // KSh 500 shipping cost
-        const totalAmount = book.price_cents + shippingCost;
-        
+        if (!book) {
+          clearBookOrderSession(userId);
+          return ctx.reply("Sorry, I lost track of the book you selected. Please start over by typing /books.");
+        }
+
+        const bookPrice = Number(book.price_cents || 0);
+        const shippingCost = SHIPPING_COST_CENTS;
+        const totalAmount = bookPrice + shippingCost;
+
         try {
-          const apiUrl = getApiUrl();
-          const response = await fetch(`${apiUrl}/api/books/orders/public`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              book_id: book.id,
-              client_telegram_id: userId.toString(),
-              client_name: session.data.contactName,
-              client_email: session.data.contactEmail,
-              client_phone: session.data.contactPhone,
-              client_address: session.data.address,
-              client_city: session.data.city,
-              client_country: session.data.country,
-              client_county: session.data.county || null,
-              client_postal_code: session.data.postalCode || null,
-              payment_method: session.data.paymentMethod,
-              payment_reference: session.data.paymentDetails,
-              payment_amount_cents: book.price_cents,
-              shipping_cost_cents: shippingCost,
-              total_amount_cents: totalAmount
-            })
+          const orderData = await createPublicBookOrder({
+            book_id: book.id,
+            client_telegram_id: String(userId),
+            client_name: session.data.contactName,
+            client_email: session.data.contactEmail,
+            client_phone: session.data.contactPhone,
+            client_address: session.data.address,
+            client_city: session.data.city,
+            client_country: session.data.country,
+            client_county: session.data.county || null,
+            client_postal_code: session.data.postalCode || null,
+            payment_method: session.data.paymentMethod,
+            payment_reference: session.data.paymentDetails,
+            payment_amount_cents: bookPrice,
+            shipping_cost_cents: shippingCost,
+            total_amount_cents: totalAmount,
           });
-          
-          if (response.ok) {
-            const orderData = await response.json();
-            clearBookOrderSession(userId);
-            return ctx.reply(`✅ Order placed successfully!\n\nOrder ID: #${orderData.id}\nTotal Amount: KSh ${(totalAmount / 100).toFixed(2)}\n\nA counselor will review your payment and process your order. You'll receive updates on your order status.\n\nType /myorders to check your order status anytime.`);
-          } else {
-            throw new Error('Failed to create order');
-          }
+
+          clearBookOrderSession(userId);
+          return ctx.reply(
+            `✅ Order placed successfully!\n\n` +
+            `Order ID: #${orderData.id}\n` +
+            `Total Amount: KSh ${(totalAmount / 100).toFixed(2)}\n\n` +
+            `A counselor will review your payment and process your order. You'll receive updates on your order status.\n\n` +
+            `Type /myorders to check your order status anytime.`
+          );
         } catch (err) {
           console.error('Order creation error:', err);
           clearBookOrderSession(userId);
@@ -923,17 +1059,6 @@ function formatBookingSummary(data) {
          `💳 **Payment Method:** ${data.payment_method}\n\n` +
          `Is this information correct? Type 'yes' to confirm and proceed to payment, or 'no' to start over.`;
 }
-
-// Test database connection
-bot.use(async (ctx, next) => {
-  try {
-    await pool.query('SELECT 1');
-    console.log("Database connection successful");
-  } catch (err) {
-    console.error("Database connection failed:", err);
-  }
-  next();
-});
 
 // User authentication middleware
 bot.use(async (ctx, next) => {
@@ -1769,68 +1894,66 @@ cron.schedule('* * * * *', sendNotifications);
 // Keep existing handlers for other features
 bot.hears("📢 Announcements", async (ctx) => {
   try {
-    const apiUrl = getApiUrl();
-    const res = await fetch(`${apiUrl}/api/announcements/public`);
-    const announcements = await res.json();
-    if (!announcements || !announcements.length) {
+    const announcements = await fetchPublicAnnouncements();
+    if (!announcements || announcements.length === 0) {
       return ctx.reply("📢 **Announcements**\n\n⚠️ Coming soon...\n\nNo announcements at the moment. Check back later for updates!");
     }
+
     let msg = "📢 **Latest Announcements:**\n\n";
-    announcements.forEach((a, i) => {
-      msg += `${i + 1}. ${a.message}\n🏥 By: ${a.counselor_name || "Counselor"}\n📆 ${new Date(a.created_at).toLocaleString()}\n\n`;
+    announcements.forEach((announcement, index) => {
+      msg += `${index + 1}. ${announcement.message}\n`;
+      if (announcement.counselor_name) {
+        msg += `🏥 By: ${announcement.counselor_name}\n`;
+      }
+      msg += `📆 ${new Date(announcement.created_at).toLocaleString()}\n\n`;
     });
-    ctx.reply(msg);
+
+    return ctx.reply(msg);
   } catch (err) {
     console.error("Error fetching announcements:", err);
-    ctx.reply("⚠️ Failed to load announcements. Please try again later.");
+    return ctx.reply("⚠️ Failed to load announcements. Please try again later.");
   }
 });
 
 bot.hears("🗓 Activities", async (ctx) => {
   try {
-    const apiUrl = getApiUrl();
-    const res = await fetch(`${apiUrl}/api/activities`);
-    const activities = await res.json();
-    console.log("Bot received activities:", activities);
-    
-    if (!activities || !activities.length) {
+    const activities = await fetchPublicActivities();
+
+    if (!activities || activities.length === 0) {
       return ctx.reply("🗓 **Activities**\n\n⚠️ Coming soon...\n\nNo upcoming activities at the moment. Check back later for events and activities!");
     }
-    
+
     let msg = "🗓 **Upcoming Activities:**\n\n";
-    activities.forEach((a, i) => {
-      console.log(`Processing activity ${i + 1}:`, { 
-        title: a.title, 
-        activity_date: a.activity_date, 
-        activity_time: a.activity_time 
-      });
-      
-      // Extract just the date part if it's a timestamp
-      const datePart = a.activity_date && a.activity_date.includes('T') ? 
-        a.activity_date.split('T')[0] : 
-        a.activity_date;
-      
-      // Format time to HH:mm if it comes as HH:mm:ss
-      const time = a.activity_time ? a.activity_time.substring(0, 5) : "00:00";
-      const dateTime = `${datePart}T${time}`;
-      
-      console.log(`Formatted dateTime: ${dateTime}`);
-      
-      const formattedDate = new Date(dateTime).toLocaleString();
-      console.log(`Final formatted date: ${formattedDate}`);
-      
-      msg += `${i + 1}. ${a.title}\n📆 ${formattedDate}\n${a.description || ""}\n\n`;
+
+    activities.forEach((activity, index) => {
+      const datePart = (activity.activity_date || '').split('T')[0];
+      const timePart = (activity.activity_time || '').slice(0, 5);
+      const candidateIso = datePart ? `${datePart}T${timePart || '00:00'}` : null;
+
+      const formattedDate = candidateIso && !Number.isNaN(Date.parse(candidateIso))
+        ? new Date(candidateIso).toLocaleString()
+        : new Date(activity.activity_date || activity.created_at || Date.now()).toLocaleString();
+
+      msg += `${index + 1}. ${activity.title}`;
+      if (activity.counselor_name) {
+        msg += ` (by ${activity.counselor_name})`;
+      }
+      msg += `\n📆 ${formattedDate}\n`;
+      if (activity.description) {
+        msg += `${activity.description}\n`;
+      }
+      msg += "\n";
     });
-    ctx.reply(msg);
+
+    return ctx.reply(msg);
   } catch (err) {
     console.error("Bot activities error:", err);
-    ctx.reply("⚠️ Could not load activities.");
+    return ctx.reply("⚠️ Could not load activities.");
   }
 });
 
 bot.hears("📚 Books for Sale", async (ctx) => {
   try {
-    console.log("📚 Books command triggered");
     startBookOrderSession(ctx.from.id);
     await handleBookOrderStep(ctx, getBookOrderSession(ctx.from.id), ctx.from.id, '');
   } catch (err) {
@@ -2829,47 +2952,40 @@ bot.command('books', async (ctx) => {
 bot.command('myorders', async (ctx) => {
   try {
     const userId = ctx.from.id;
-    const apiUrl = getApiUrl();
-    const response = await fetch(`${apiUrl}/api/books/orders/client/${userId}`);
-    
-    if (response.ok) {
-      const orders = await response.json();
-      
-      if (orders.length === 0) {
-        return ctx.reply("📦 You have no orders yet.\n\nType /books to browse and purchase books!");
-      }
-      
-      let msg = "📦 Your Book Orders:\n\n";
-      orders.forEach((order, i) => {
-        const statusIcon = {
-          'ordered': '📋',
-          'paid': '💰',
-          'shipped': '📦',
-          'delivered': '✅',
-          'cancelled': '❌'
-        }[order.order_status] || '❓';
-        
-        msg += `${i + 1}. ${statusIcon} Order #${order.id}\n`;
-        msg += `   📚 ${order.book_title} by ${order.book_author}\n`;
-        msg += `   💳 Total: KSh ${(order.total_amount_cents / 100).toFixed(2)}\n`;
-        msg += `   📊 Status: ${order.order_status.toUpperCase()}\n`;
-        
-        if (order.tracking_number) {
-          msg += `   📦 Tracking: ${order.tracking_number}\n`;
-        }
-        if (order.estimated_delivery_date) {
-          msg += `   📅 Est. Delivery: ${new Date(order.estimated_delivery_date).toLocaleDateString()}\n`;
-        }
-        msg += `   📅 Ordered: ${new Date(order.created_at).toLocaleDateString()}\n\n`;
-      });
-      
-      return ctx.reply(msg);
-    } else {
-      return ctx.reply("Sorry, I couldn't retrieve your orders right now. Please try again later.");
+    const orders = await fetchClientBookOrders(String(userId));
+
+    if (!orders || orders.length === 0) {
+      return ctx.reply("📦 You have no orders yet.\n\nType /books to browse and purchase books!");
     }
+
+    let msg = "📦 Your Book Orders:\n\n";
+    orders.forEach((order, i) => {
+      const statusIcon = {
+        ordered: '📋',
+        paid: '💰',
+        shipped: '📦',
+        delivered: '✅',
+        cancelled: '❌',
+      }[order.order_status] || '❓';
+
+      msg += `${i + 1}. ${statusIcon} Order #${order.id}\n`;
+      msg += `   📚 ${order.book_title} by ${order.book_author}\n`;
+      msg += `   💳 Total: KSh ${(Number(order.total_amount_cents || 0) / 100).toFixed(2)}\n`;
+      msg += `   📊 Status: ${order.order_status.toUpperCase()}\n`;
+
+      if (order.tracking_number) {
+        msg += `   📦 Tracking: ${order.tracking_number}\n`;
+      }
+      if (order.estimated_delivery_date) {
+        msg += `   📅 Est. Delivery: ${new Date(order.estimated_delivery_date).toLocaleDateString()}\n`;
+      }
+      msg += `   📅 Ordered: ${new Date(order.created_at).toLocaleDateString()}\n\n`;
+    });
+
+    return ctx.reply(msg);
   } catch (err) {
     console.error('My orders command error:', err);
-    ctx.reply('I could not load your orders right now. Please try again later.');
+    return ctx.reply('I could not load your orders right now. Please try again later.');
   }
 });
 
