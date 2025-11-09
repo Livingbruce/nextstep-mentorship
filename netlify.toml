@@ -1,16 +1,13 @@
 [build]
-  # Build from root to handle both frontend and backend
-  base = "."
-  publish = "frontend/dist"
-  # Install backend dependencies (needed for functions), install function dependencies, then frontend, then build
-  # Using npm ci for clean install and npm run build which works on Netlify Linux
-  command = "cd backend && npm ci && cd netlify/functions && npm ci && cd ../../../frontend && npm ci && npm run build"
+  # Build from frontend directory to ensure vite is available
+  base = "frontend"
+  command = "npm install && npm run build"
+  publish = "dist"
 
 # Netlify Functions for backend API
-# Functions directory is relative to repository root
+# Functions directory is relative to repository root (from frontend base)
 [functions]
-  directory = "backend/netlify/functions"
-  # Node version for functions
+  directory = "../backend/netlify/functions"
   node_bundler = "esbuild"
 
 # Redirect API calls to Netlify Functions
