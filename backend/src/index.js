@@ -46,6 +46,8 @@ const isVercelDeployment = process.env.VERCEL === '1';
 const TELEGRAM_WEBHOOK_PATH = '/api/telegram/webhook';
 let telegramWebhookSetupPromise = null;
 
+app.set('trust proxy', 1);
+
 const resolveTelegramWebhookUrl = () => {
   const explicit = process.env.TELEGRAM_WEBHOOK_URL && process.env.TELEGRAM_WEBHOOK_URL.trim();
   if (explicit) return explicit;
