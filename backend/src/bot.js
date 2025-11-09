@@ -13,6 +13,23 @@ dotenv.config({ path: path.join(__dirname, "../.env") });
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
+const processedUpdateIds = new Map();
+const UPDATE_CACHE_MS = 5 * 60 * 1000; // 5 minutes
+
+const MENU_TEXT_COMMANDS = new Set([
+  "Counselors",
+  "📅 Book Appointment",
+  "📋 My Appointments",
+  "❌ Cancel Appointment",
+  "🆘 Support",
+  "Support",
+  "ℹ️ Help",
+  "📞 Contact",
+  "📢 Announcements",
+  "🗓 Activities",
+  "📚 Books for Sale",
+]);
+
 // Helper function to get API URL
 const sanitizeUrl = (value) => value.replace(/\/$/, '');
 const isProduction = process.env.NODE_ENV === 'production';
@@ -72,6 +89,24 @@ console.log(`[Telegram Bot] API base URL resolved to: ${resolvedApiBaseUrl}`);
 pool.query("SELECT 1")
   .then(() => console.log("[Telegram Bot] Database connection verified"))
   .catch((error) => console.error("[Telegram Bot] Database connection check failed:", error));
+
+bot.use(async (ctx, next) => {
+  const updateId = ctx.update?.update_id;
+  if (typeof updateId === 'number') {
+    const now = Date.now();
+    for (const [storedId, timestamp] of processedUpdateIds) {
+      if (now - timestamp > UPDATE_CACHE_MS) {
+        processedUpdateIds.delete(storedId);
+      }
+    }
+    if (processedUpdateIds.has(updateId)) {
+      console.warn(`Duplicate update ignored: ${updateId}`);
+      return;
+    }
+    processedUpdateIds.set(updateId, now);
+  }
+  return next();
+});
 
 const createCachedFetcher = (loader, ttlMs = 60_000) => {
   let cache;
@@ -1074,7 +1109,7 @@ bot.use(async (ctx, next) => {
       console.log(`User ${ctx.from.id} (${ctx.from.username || 'no username'}) authenticated`);
     }
   }
-  next();
+  await next();
 });
 
 // Enhanced start command with more conversational tone
@@ -3193,6 +3228,10 @@ bot.on('text', async (ctx) => {
   const supportSession = getSupportSession(userId);
   const mentorshipSession = getMentorshipSession(userId);
   const reviewSession = getReviewSession(userId);
+  
+  if (MENU_TEXT_COMMANDS.has(ctx.message.text.trim())) {
+    return;
+  }
   
   // Handle support session first
   if (supportSession) {
