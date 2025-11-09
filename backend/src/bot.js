@@ -19,23 +19,19 @@ const sanitizeUrl = (value) => value.replace(/\/$/, '');
 const isProduction = process.env.NODE_ENV === 'production';
 
 const getApiUrl = () => {
-  // In development, always prefer local backend unless explicitly overridden
-  if (!isProduction) {
-    if (process.env.LOCAL_API_URL && process.env.LOCAL_API_URL.trim() !== '') {
-      return sanitizeUrl(process.env.LOCAL_API_URL.trim());
-    }
-    return 'http://localhost:5000';
+  const explicit = [
+    process.env.API_URL,
+    process.env.BACKEND_URL,
+  ].find((value) => value && value.trim() !== '');
+
+  if (explicit) {
+    return sanitizeUrl(explicit.trim());
   }
 
-  // Highest priority: explicit API_URL or BACKEND_URL
-  if (process.env.API_URL && process.env.API_URL.trim() !== '') {
-    return sanitizeUrl(process.env.API_URL.trim());
-  }
-  if (process.env.BACKEND_URL && process.env.BACKEND_URL.trim() !== '') {
-    return sanitizeUrl(process.env.BACKEND_URL.trim());
+  if (process.env.VERCEL_URL && process.env.VERCEL_URL.trim() !== '') {
+    return sanitizeUrl(`https://${process.env.VERCEL_URL.trim()}`);
   }
 
-  // If FRONTEND_URL is set, prefer backend origin when running locally
   if (process.env.FRONTEND_URL && process.env.FRONTEND_URL.trim() !== '') {
     try {
       const frontendUrl = new URL(process.env.FRONTEND_URL.trim());
@@ -61,8 +57,17 @@ const getApiUrl = () => {
     }
   }
 
+  if (!isProduction) {
+    if (process.env.LOCAL_API_URL && process.env.LOCAL_API_URL.trim() !== '') {
+      return sanitizeUrl(process.env.LOCAL_API_URL.trim());
+    }
+    return 'http://localhost:5000';
+  }
+
   return sanitizeUrl('http://localhost:5000');
 };
+
+console.log(`[Telegram Bot] API base URL resolved to: ${getApiUrl()}`);
 
 // User session management
 const userSessions = new Map();
