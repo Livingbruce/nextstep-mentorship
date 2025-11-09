@@ -15,14 +15,43 @@ dotenv.config({ path: path.join(__dirname, "../.env") });
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
 // Helper function to get API URL
+const sanitizeUrl = (value) => value.replace(/\/$/, '');
+
 const getApiUrl = () => {
-  // Use API_URL if set, otherwise construct from FRONTEND_URL or use localhost
-  if (process.env.API_URL) {
-    return process.env.API_URL.replace(/\/$/, ''); // Remove trailing slash
+  // Highest priority: explicit API_URL or BACKEND_URL
+  if (process.env.API_URL && process.env.API_URL.trim() !== '') {
+    return sanitizeUrl(process.env.API_URL.trim());
   }
-  if (process.env.FRONTEND_URL) {
-    return process.env.FRONTEND_URL.replace(/\/$/, ''); // Remove trailing slash
+  if (process.env.BACKEND_URL && process.env.BACKEND_URL.trim() !== '') {
+    return sanitizeUrl(process.env.BACKEND_URL.trim());
   }
+
+  // If FRONTEND_URL is set, prefer backend origin when running locally
+  if (process.env.FRONTEND_URL && process.env.FRONTEND_URL.trim() !== '') {
+    try {
+      const frontendUrl = new URL(process.env.FRONTEND_URL.trim());
+      const isLocalhost = ['localhost', '127.0.0.1'].includes(frontendUrl.hostname);
+
+      if (isLocalhost) {
+        const backendPort =
+          process.env.API_PORT ||
+          process.env.PORT ||
+          '5000';
+
+        frontendUrl.port = backendPort;
+        frontendUrl.pathname = '';
+        frontendUrl.search = '';
+        frontendUrl.hash = '';
+
+        return sanitizeUrl(frontendUrl.toString());
+      }
+
+      return sanitizeUrl(frontendUrl.toString());
+    } catch (error) {
+      console.warn('Invalid FRONTEND_URL provided. Falling back to localhost.', error);
+    }
+  }
+
   return 'http://localhost:5000';
 };
 

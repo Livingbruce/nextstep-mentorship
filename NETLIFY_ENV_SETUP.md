@@ -9,6 +9,7 @@ Go to: https://app.netlify.com/projects/nextstep-mentorship/configuration/env
 **Add these variables:**
 
 ```
+API_URL=https://nextstep-mentorship.netlify.app
 DATABASE_URL=postgresql://nextstep_mentorship_db_user:b8WVAYPPTfEBJffTjzvOq24uTFGu21fd@dpg-d473u6ili9vc738fevl0-a.singapore-postgres.render.com/nextstep_mentorship_db
 NODE_ENV=production
 JWT_SECRET=your-super-secret-jwt-key-here

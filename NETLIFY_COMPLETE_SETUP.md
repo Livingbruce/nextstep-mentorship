@@ -32,6 +32,7 @@ Add these environment variables:
 DATABASE_URL=postgresql://nextstep_mentorship_db_user:b8WVAYPPTfEBJffTjzvOq24uTFGu21fd@dpg-d473u6ili9vc738fevl0-a.singapore-postgres.render.com/nextstep_mentorship_db
 
 # Application Settings
+API_URL=https://nextstep-mentorship.netlify.app
 NODE_ENV=production
 JWT_SECRET=your-super-secret-jwt-key-here
 FRONTEND_URL=https://nextstep-mentorship.netlify.app
