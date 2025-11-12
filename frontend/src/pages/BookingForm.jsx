@@ -82,6 +82,16 @@ const buildValidation = (data) => {
   if (!data.reason?.trim()) errors.reason = "Briefly share what brings you to counseling.";
   if (!data.issueDuration) errors.issueDuration = "Let us know how long this has been going on.";
   if (!data.paymentMethod) errors.paymentMethod = "Select a payment method.";
+  if (data.paymentMethod === "mpesa" && !data.mpesaPhoneNumber?.trim()) {
+    errors.mpesaPhoneNumber = "M-Pesa phone number is required.";
+  }
+  if (data.paymentMethod === "card") {
+    if (!data.cardholderName?.trim()) errors.cardholderName = "Cardholder name is required.";
+    if (!data.cardNumber?.trim()) errors.cardNumber = "Card number is required.";
+    if (!data.expiryMonth) errors.expiryMonth = "Expiry month is required.";
+    if (!data.expiryYear) errors.expiryYear = "Expiry year is required.";
+    if (!data.cvv?.trim()) errors.cvv = "CVV is required.";
+  }
   if (!data.consentDataCollection) errors.consentDataCollection = "Consent is required.";
   if (!data.consentConfidentiality) errors.consentConfidentiality = "Acknowledgement is required.";
   if (!data.paymentConfirmation) errors.paymentConfirmation = "Please confirm that your payment information is correct.";
@@ -218,7 +228,7 @@ const BookingForm = () => {
       consentConfidentiality: formData.consentConfidentiality,
       consentReminders: formData.consentReminders,
       paymentMethod: formData.paymentMethod,
-      transactionReference: formData.transactionReference.trim(),
+      mpesaPhoneNumber: formData.mpesaPhoneNumber.trim(), // Phone number for M-Pesa STK push
       paymentConfirmation: formData.paymentConfirmation,
       // Card payment details (only if card payment selected)
       ...(formData.paymentMethod === "card" && {
