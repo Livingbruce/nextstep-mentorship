@@ -185,6 +185,7 @@ function buildValidationErrors(payload) {
     ["sessionMode", "Session mode is required"],
     ["reason", "Reason for counseling is required"],
     ["paymentMethod", "Payment method is required"],
+    ["mpesaPhoneNumber", "M-Pesa phone number is required when M-Pesa is selected"],
   ];
 
   for (const [field, message] of requiredFields) {
@@ -698,19 +699,25 @@ export async function createWebBooking(payload) {
     await pool.query("COMMIT");
 
     // Initiate payment based on method
-    if (normalizedPaymentMethod === "M-Pesa" && phone) {
-      try {
-        const { initiateMpesaSTKPush } = await import("./paymentService.js");
-        await initiateMpesaSTKPush(
-          phone,
-          sessionCost,
-          appointmentCode,
-          `Payment for appointment ${appointmentCode}`
-        );
-        console.log(`[Booking Service] M-Pesa STK push initiated for appointment ${appointmentCode}`);
-      } catch (paymentError) {
-        console.error("[Booking Service] Error initiating M-Pesa payment:", paymentError);
-        // Don't fail the booking if payment initiation fails - user can pay later
+    if (normalizedPaymentMethod === "M-Pesa") {
+      // Use phone number from form (mpesaPhoneNumber) or fallback to contact phone
+      const mpesaPhone = payload.mpesaPhoneNumber || phone;
+      if (mpesaPhone) {
+        try {
+          const { initiateMpesaSTKPush } = await import("./paymentService.js");
+          await initiateMpesaSTKPush(
+            mpesaPhone,
+            sessionCost,
+            appointmentCode,
+            `Payment for appointment ${appointmentCode}`
+          );
+          console.log(`[Booking Service] M-Pesa STK push initiated for appointment ${appointmentCode} to ${mpesaPhone}`);
+        } catch (paymentError) {
+          console.error("[Booking Service] Error initiating M-Pesa payment:", paymentError);
+          // Don't fail the booking if payment initiation fails - user can pay later
+        }
+      } else {
+        console.warn("[Booking Service] M-Pesa selected but no phone number provided");
       }
     } else if (normalizedPaymentMethod === "Card" && payload.cardNumber) {
       try {

@@ -24,11 +24,8 @@ const sessionDurations = [
 const issueDurations = ["Days", "Weeks", "Months", "Years", "Uncertain"];
 
 const paymentMethods = [
-  { value: "mpesa", label: "M-PESA (STK / Till / Paybill)" },
-  { value: "bank", label: "Bank Transfer" },
+  { value: "mpesa", label: "M-Pesa" },
   { value: "card", label: "Card Payment" },
-  { value: "cash", label: "Cash (Onsite)" },
-  { value: "insurance", label: "Insurance Provider" },
 ];
 
 const initialFormState = {
@@ -57,7 +54,7 @@ const initialFormState = {
   consentConfidentiality: false,
   consentReminders: true,
   paymentMethod: "mpesa",
-  transactionReference: "",
+  mpesaPhoneNumber: "", // Phone number for M-Pesa STK push
   paymentConfirmation: false,
   // Card payment fields
   cardholderName: "",
@@ -802,21 +799,25 @@ const BookingForm = () => {
               </div>
               {formData.paymentMethod === "mpesa" && (
                 <div className="form-field">
-                  <label htmlFor="transactionReference">
-                    Transaction reference <span>(if already paid)</span>
+                  <label htmlFor="mpesaPhoneNumber">
+                    M-Pesa Phone Number <span>(required)</span>
                   </label>
                   <input
-                    id="transactionReference"
-                    name="transactionReference"
-                    type="text"
-                    placeholder="e.g., MPESA QXT123ABC4"
-                    value={formData.transactionReference}
+                    id="mpesaPhoneNumber"
+                    name="mpesaPhoneNumber"
+                    type="tel"
+                    placeholder="254712345678"
+                    value={formData.mpesaPhoneNumber}
                     onChange={handleChange}
+                    required
                   />
+                  <p className="helper-text">
+                    You will receive an M-Pesa prompt on this number to complete payment.
+                  </p>
                 </div>
               )}
             </div>
-            {formData.paymentMethod === "bank" || formData.paymentMethod === "card" ? (
+            {formData.paymentMethod === "card" ? (
               <div className="form-grid two-column" style={{ marginTop: "1rem" }}>
                 <div className="form-field">
                   <label htmlFor="cardholderName">

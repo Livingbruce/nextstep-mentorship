@@ -28,9 +28,16 @@ export const login = async (req, res) => {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
+    const jwtSecret = process.env.JWT_SECRET;
+
+    if (!jwtSecret) {
+      console.error('❌ JWT_SECRET environment variable is not set. Unable to complete login.');
+      return res.status(500).json({ error: "Authentication service is misconfigured. Please contact support." });
+    }
+
     const token = jwt.sign(
       { counselorId: counselor.id, email: counselor.email },
-      process.env.JWT_SECRET,
+      jwtSecret,
       { expiresIn: JWT_EXPIRES_IN }
     );
 
