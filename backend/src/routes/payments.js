@@ -8,7 +8,7 @@ import {
   getAccountDetails,
   processCardPayment,
 } from "../services/paymentService.js";
-import { bot } from "../bot.js";
+import bot from "../bot.js";
 
 const router = express.Router();
 
@@ -78,7 +78,7 @@ router.post("/mpesa/callback", async (req, res) => {
               [paymentResult.clientId]
             );
             
-            if (clientRes.rows[0]?.telegram_user_id) {
+            if (clientRes.rows[0]?.telegram_user_id && bot && bot.telegram) {
               await bot.telegram.sendMessage(
                 clientRes.rows[0].telegram_user_id,
                 `✅ Payment confirmed!\n\n` +
@@ -178,7 +178,7 @@ router.post("/card/callback", async (req, res) => {
                 [paymentResult.clientId]
               );
               
-              if (clientRes.rows[0]?.telegram_user_id) {
+              if (clientRes.rows[0]?.telegram_user_id && bot && bot.telegram) {
                 await bot.telegram.sendMessage(
                   clientRes.rows[0].telegram_user_id,
                   `✅ Payment confirmed!\n\n` +
