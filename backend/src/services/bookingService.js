@@ -455,6 +455,7 @@ async function scheduleAppointmentReminders(appointmentId, clientEmail, clientNa
 
 export async function createWebBooking(payload) {
   await ensureIntakeTable();
+  await ensureAmountCentsColumn();
 
   const errors = buildValidationErrors(payload);
   if (errors.length > 0) {
