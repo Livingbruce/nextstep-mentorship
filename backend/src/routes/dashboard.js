@@ -186,13 +186,21 @@ router.get("/appointments", async (req, res) => {
       `SELECT a.id, a.student_id, a.client_id, a.counselor_id,
               a.start_ts, a.end_ts, a.appointment_date, a.end_date,
               a.status, a.payment_status, a.payment_method, a.session_type, a.session_duration,
+              a.appointment_code,
               s.name as student_name, s.admission_no, s.phone, s.year_of_study as year,
               c.full_name as client_name, c.contact_info as client_contact,
               c.date_of_birth as client_dob, c.emergency_contact_name, c.emergency_contact_phone,
-              c.therapy_reason, c.session_goals, c.previous_therapy
+              c.therapy_reason, c.session_goals, c.previous_therapy,
+              cif.gender, cif.pronouns, cif.phone as intake_phone, cif.email as intake_email,
+              cif.county, cif.town, cif.counseling_type, cif.reason as intake_reason,
+              cif.issue_duration,
+              cif.previous_counseling, cif.previous_counseling_details,
+              cif.session_mode, cif.session_duration_minutes,
+              cif.payment_method as intake_payment_method, cif.transaction_reference
        FROM appointments a
        LEFT JOIN students s ON a.student_id = s.id
        LEFT JOIN clients c ON a.client_id = c.id
+       LEFT JOIN client_intake_forms cif ON cif.appointment_id = a.id
        WHERE a.counselor_id = $1
        ORDER BY COALESCE(a.start_ts, a.appointment_date) DESC`,
       [req.counselor.id]
@@ -702,68 +710,9 @@ router.get("/counselors/available", async (req, res) => {
   }
 });
 
-// Books routes
-router.get("/books", async (req, res) => {
-  try {
-    const result = await pool.query(
-      "SELECT * FROM books WHERE counselor_id = $1 ORDER BY created_at DESC",
-      [req.counselor.id]
-    );
-    res.json(result.rows);
-  } catch (err) {
-    console.error("Error fetching books:", err);
-    res.status(500).json({ error: "Failed to fetch books" });
-  }
-});
-
-router.post("/books", async (req, res) => {
-  try {
-    const { title, author, price_cents, pickup_station } = req.body;
-    const result = await pool.query(
-      "INSERT INTO books (title, author, price_cents, pickup_station, counselor_id) VALUES ($1, $2, $3, $4, $5) RETURNING *",
-      [title, author, price_cents, pickup_station, req.counselor.id] // Changed from req.counselor.id
-    );
-    res.status(201).json(result.rows[0]);
-  } catch (err) {
-    console.error("Error creating book:", err);
-    res.status(500).json({ error: "Failed to create book" });
-  }
-});
-
-router.put("/books/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { title, author, price_cents, pickup_station } = req.body;
-    const result = await pool.query(
-      "UPDATE books SET title = $1, author = $2, price_cents = $3, pickup_station = $4 WHERE id = $5 AND counselor_id = $6 RETURNING *",
-      [title, author, price_cents, pickup_station, id, req.counselor.id] // Changed from req.counselor.id
-    );
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: "Book not found" });
-    }
-    res.json(result.rows[0]);
-  } catch (err) {
-    console.error("Error updating book:", err);
-    res.status(500).json({ error: "Failed to update book" });
-  }
-});
-
-router.delete("/books/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const result = await pool.query(
-      "DELETE FROM books WHERE id = $1 AND counselor_id = $2 RETURNING *",
-      [id, req.counselor.id] // Changed from req.counselor.id
-    );
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: "Book not found" });
-    }
-    res.json({ message: "Book deleted successfully" });
-  } catch (err) {
-    console.error("Error deleting book:", err);
-    res.status(500).json({ error: "Failed to delete book" });
-  }
-});
+// Books routes - REMOVED: These routes are now handled by /api/dashboard/books (books.js)
+// The books.js routes support FormData, file uploads, and all new book fields.
+// All CRUD operations (GET, POST, PUT, DELETE) are handled in books.js
 
 // Announcements routes
 router.get("/announcements", async (req, res) => {
@@ -1376,10 +1325,15 @@ router.patch("/appointments/:id/payment-status", async (req, res) => {
 
     // Notify client via bot when paid
     if (payment_status === 'paid') {
+      console.log(`[Payment Notification] ===== PAYMENT STATUS SET TO PAID =====`);
+      console.log(`[Payment Notification] Appointment ID: ${id}`);
+      console.log(`[Payment Notification] Payment status: ${payment_status}`);
       try {
         const detailRes = await pool.query(
-          `SELECT a.id, a.telegram_user_id, a.start_ts, a.end_ts, a.appointment_date, a.end_date, a.payment_status, a.status,
-                  c.full_name as client_name, cn.name as counselor_name
+          `SELECT a.id, a.telegram_user_id, a.start_ts, a.end_ts, a.appointment_date, a.end_date, 
+                  a.payment_status, a.status, a.appointment_code, a.session_type, a.session_duration,
+                  c.full_name as client_name, c.telegram_user_id as client_telegram_user_id, c.contact_info as client_contact_info,
+                  cn.name as counselor_name, cn.id as counselor_id
            FROM appointments a
            LEFT JOIN clients c ON a.client_id=c.id
            LEFT JOIN counselors cn ON a.counselor_id=cn.id
@@ -1387,32 +1341,280 @@ router.patch("/appointments/:id/payment-status", async (req, res) => {
           [id]
         );
         const row = detailRes.rows[0];
-        if (row && row.telegram_user_id) {
-          const formatTs = (ts) => {
-            if (!ts) return '';
-            try {
-              const d = new Date(ts);
-              return d.toLocaleString('en-KE', {
-                timeZone: 'Africa/Nairobi', year: 'numeric', month: 'short', day: '2-digit',
-                hour: 'numeric', minute: '2-digit', hour12: true
-              });
-            } catch (_) { return String(ts); }
-          };
-          const when = formatTs(row.start_ts || row.appointment_date);
-          const endWhen = formatTs(row.end_ts || row.end_date);
-          const { sendMessageToUser } = await import('../utils/botSender.js');
-          const msg = `✅ Payment received and appointment approved\n\n` +
-            `Appointment ID: ${row.id}\n` +
-            `Client: ${row.client_name || 'You'}\n` +
-            `Therapist: ${row.counselor_name || ''}\n` +
-            `Date: ${when} → ${endWhen} (EAT)\n` +
-            `Payment: ${row.payment_status}\n` +
-            `Status: pending`;
-          await sendMessageToUser(row.telegram_user_id, msg);
+        if (!row) {
+          console.log(`[Payment Notification] Appointment ${id} not found`);
+          return;
+        }
+        
+        // Get intake form data (for web bookings)
+        const intakeRes = await pool.query(
+          `SELECT appointment_code, counseling_type, session_mode, session_duration_minutes,
+                  reason, issue_duration, consent_timestamp, email as client_email, phone
+           FROM client_intake_forms
+           WHERE appointment_id=$1
+           ORDER BY created_at DESC
+           LIMIT 1`,
+          [id]
+        );
+        const intake = intakeRes.rows[0] || {};
+        
+        // For bot bookings, extract phone/email from client contact_info if intake is empty
+        if (!intake.phone && !intake.client_email && row.client_contact_info) {
+          const contactInfo = row.client_contact_info;
+          // Try to extract phone and email from contact_info
+          const phoneMatch = contactInfo.match(/(\+?\d{10,15})/);
+          const emailMatch = contactInfo.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+          if (phoneMatch) {
+            intake.phone = phoneMatch[1];
+          }
+          if (emailMatch) {
+            intake.client_email = emailMatch[1];
+          }
+        }
+        
+        // Use appointment_code from appointments table if intake doesn't have it
+        if (!intake.appointment_code && row.appointment_code) {
+          intake.appointment_code = row.appointment_code;
+        }
+        
+        // Use session info from appointments table if intake doesn't have it
+        if (!intake.session_mode && row.session_type) {
+          intake.session_mode = row.session_type;
+        }
+        if (!intake.session_duration_minutes && row.session_duration) {
+          // Extract minutes from "60 mins" format
+          const durationMatch = row.session_duration.match(/(\d+)/);
+          if (durationMatch) {
+            intake.session_duration_minutes = parseInt(durationMatch[1], 10);
+          }
+        }
+        const shorten = (text, len = 180) => {
+          if (!text) return '';
+          if (text.length <= len) return text;
+          return `${text.slice(0, len - 3)}...`;
+        };
+        const formatTs = (ts) => {
+          if (!ts) return '';
+          try {
+            const d = new Date(ts);
+            return d.toLocaleString('en-KE', {
+              timeZone: 'Africa/Nairobi', year: 'numeric', month: 'short', day: '2-digit',
+              hour: 'numeric', minute: '2-digit', hour12: true
+            });
+          } catch (_) { return String(ts); }
+        };
+        const when = formatTs(row.start_ts || row.appointment_date);
+        const endWhen = formatTs(row.end_ts || row.end_date);
+        
+        // Notify via Telegram if available
+        let telegramUserId = row?.telegram_user_id;
+        console.log(`[Payment Notification] ===== Starting notification check =====`);
+        console.log(`[Payment Notification] Appointment ID: ${row.id}`);
+        console.log(`[Payment Notification] Appointment telegram_user_id: ${telegramUserId || 'null'}`);
+        console.log(`[Payment Notification] Client telegram_user_id: ${row?.client_telegram_user_id || 'null'}`);
+        console.log(`[Payment Notification] Client name: ${row?.client_name || 'null'}`);
+        console.log(`[Payment Notification] Client contact_info: ${row?.client_contact_info || 'null'}`);
+        console.log(`[Payment Notification] Intake phone: ${intake?.phone || 'null'}`);
+        console.log(`[Payment Notification] Intake email: ${intake?.client_email || 'null'}`);
+        
+        // For bot bookings, telegram_user_id should be in appointments table
+        if (telegramUserId) {
+          console.log(`[Payment Notification] ✅ Found Telegram user from appointment: ${telegramUserId}`);
+        }
+        
+        // Check client's telegram_user_id from clients table
+        if (!telegramUserId && row?.client_telegram_user_id) {
+          telegramUserId = row.client_telegram_user_id;
+          console.log(`[Payment Notification] ✅ Found Telegram user from client record: ${telegramUserId}`);
+        }
+        
+        // If no telegram_user_id, try to find it by phone number or email from clients table
+        if (!telegramUserId && intake) {
+          try {
+            // Try to find Telegram user by phone number from clients table
+            if (intake.phone) {
+              console.log(`[Payment Notification] Looking up Telegram user by phone: ${intake.phone}`);
+              const phoneMatch = await pool.query(
+                `SELECT telegram_user_id FROM clients 
+                 WHERE (contact_info LIKE $1 OR contact_info LIKE $2)
+                 AND telegram_user_id IS NOT NULL
+                 LIMIT 1`,
+                [`%${intake.phone}%`, `%Phone: ${intake.phone}%`]
+              );
+              if (phoneMatch.rows.length > 0 && phoneMatch.rows[0].telegram_user_id) {
+                telegramUserId = phoneMatch.rows[0].telegram_user_id;
+                console.log(`[Payment Notification] Found Telegram user by phone in clients: ${telegramUserId}`);
+              } else {
+                console.log(`[Payment Notification] No Telegram user found by phone in clients: ${intake.phone}`);
+                // Try to find any client with this phone that has a telegram_user_id
+                // This handles cases where the client was created via bot booking
+                const allClientsWithPhone = await pool.query(
+                  `SELECT telegram_user_id FROM clients 
+                   WHERE contact_info LIKE $1 
+                   AND telegram_user_id IS NOT NULL
+                   LIMIT 1`,
+                  [`%${intake.phone}%`]
+                );
+                if (allClientsWithPhone.rows.length > 0 && allClientsWithPhone.rows[0].telegram_user_id) {
+                  telegramUserId = allClientsWithPhone.rows[0].telegram_user_id;
+                  console.log(`[Payment Notification] ✅ Found Telegram user by phone in other client record: ${telegramUserId}`);
+                } else {
+                  console.log(`[Payment Notification] No Telegram user found by phone in any client record`);
+                }
+              }
+            }
+            
+            // Try to find Telegram user by email from clients table
+            if (!telegramUserId && intake.client_email) {
+              console.log(`[Payment Notification] Looking up Telegram user by email: ${intake.client_email}`);
+              const emailMatch = await pool.query(
+                `SELECT telegram_user_id FROM clients 
+                 WHERE (contact_info LIKE $1 OR contact_info LIKE $2)
+                 AND telegram_user_id IS NOT NULL
+                 LIMIT 1`,
+                [`%${intake.client_email}%`, `%Email: ${intake.client_email}%`]
+              );
+              if (emailMatch.rows.length > 0 && emailMatch.rows[0].telegram_user_id) {
+                telegramUserId = emailMatch.rows[0].telegram_user_id;
+                console.log(`[Payment Notification] Found Telegram user by email in clients: ${telegramUserId}`);
+              } else {
+                console.log(`[Payment Notification] No Telegram user found by email in clients: ${intake.client_email}`);
+                // Try to find any client with this email that has a telegram_user_id
+                // This handles cases where the client was created via bot booking
+                const allClientsWithEmail = await pool.query(
+                  `SELECT telegram_user_id FROM clients 
+                   WHERE contact_info LIKE $1 
+                   AND telegram_user_id IS NOT NULL
+                   LIMIT 1`,
+                  [`%${intake.client_email}%`]
+                );
+                if (allClientsWithEmail.rows.length > 0 && allClientsWithEmail.rows[0].telegram_user_id) {
+                  telegramUserId = allClientsWithEmail.rows[0].telegram_user_id;
+                  console.log(`[Payment Notification] ✅ Found Telegram user by email in other client record: ${telegramUserId}`);
+                } else {
+                  console.log(`[Payment Notification] No Telegram user found by email in any client record`);
+                }
+              }
+            }
+          } catch (lookupErr) {
+            console.error('[Payment Notification] Error looking up Telegram user:', lookupErr);
+          }
+        }
+        
+        // Send bot notification if we found a Telegram user
+        if (row && telegramUserId) {
+          try {
+            console.log(`[Payment Notification] Sending bot notification to Telegram user: ${telegramUserId}`);
+            const { sendMessageToUser } = await import('../utils/botSender.js');
+            const summaryLines = [
+              '✅ Payment received and appointment approved',
+              '',
+              `Appointment ID: ${row.id}`,
+              intake.appointment_code ? `Appointment Code: ${intake.appointment_code}` : null,
+              `Client: ${row.client_name || 'You'}`,
+              `Therapist: ${row.counselor_name || ''}`,
+              `Date: ${when} → ${endWhen} (EAT)`,
+              intake.session_mode ? `Session Mode: ${intake.session_mode}` : null,
+              intake.session_duration_minutes
+                ? `Duration: ${intake.session_duration_minutes} minutes`
+                : null,
+              intake.counseling_type ? `Counseling Type: ${intake.counseling_type}` : null,
+              intake.issue_duration ? `Issue Duration: ${intake.issue_duration}` : null,
+              intake.reason ? `Focus: ${shorten(intake.reason)}` : null,
+              '',
+              `Payment Status: ${row.payment_status}`,
+              `Booking Status: pending`,
+            ].filter(Boolean);
+            const msg = summaryLines.join('\n');
+            const sent = await sendMessageToUser(telegramUserId, msg);
+            if (sent) {
+              console.log(`[Payment Notification] ✅ Bot notification sent successfully to ${telegramUserId}`);
+            } else {
+              console.log(`[Payment Notification] ❌ Bot notification failed to send to ${telegramUserId}`);
+            }
+          } catch (botErr) {
+            console.error('[Payment Notification] Error sending bot notification:', botErr);
+          }
+        } else {
+          console.log(`[Payment Notification] No Telegram user found for appointment ${row?.id}. Client: ${row?.client_name}, Phone: ${intake?.phone}, Email: ${intake?.client_email}`);
+        }
+        
+        // Notify via email for web bookings
+        if (row && !row.telegram_user_id && intake.client_email) {
+          try {
+            const emailService = (await import('../services/emailService.js')).default;
+            const formattedDate = new Date(row.appointment_date || row.start_ts).toLocaleString('en-KE', {
+              timeZone: 'Africa/Nairobi',
+              weekday: 'long',
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric',
+              hour: 'numeric',
+              minute: '2-digit',
+              hour12: true
+            });
+            
+            await emailService.transporter.sendMail({
+              from: '"NextStep Therapy Services" <nextstepmentorship@gmail.com>',
+              to: intake.client_email,
+              subject: `Payment Confirmed - Appointment ${intake.appointment_code || row.id}`,
+              html: `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                  <meta charset="utf-8">
+                  <style>
+                    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                    .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; }
+                    .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 8px 8px; }
+                    .info-box { background: white; padding: 20px; margin: 15px 0; border-radius: 8px; border-left: 4px solid #667eea; }
+                    .success { background: #d4edda; border-left: 4px solid #28a745; padding: 15px; margin: 15px 0; border-radius: 8px; }
+                    .info-label { font-weight: bold; color: #667eea; }
+                  </style>
+                </head>
+                <body>
+                  <div class="container">
+                    <div class="header">
+                      <h1>✅ Payment Confirmed</h1>
+                      <p>Your appointment has been approved</p>
+                    </div>
+                    <div class="content">
+                      <p>Dear ${row.client_name},</p>
+                      <div class="success">
+                        <p><strong>✅ Payment received and appointment approved!</strong></p>
+                      </div>
+                      <div class="info-box">
+                        <p><span class="info-label">Appointment Code:</span> ${intake.appointment_code || row.id}</p>
+                        <p><span class="info-label">Date & Time:</span> ${formattedDate}</p>
+                        <p><span class="info-label">Counselor:</span> ${row.counselor_name || ''}</p>
+                        ${intake.session_mode ? `<p><span class="info-label">Session Mode:</span> ${intake.session_mode}</p>` : ''}
+                        ${intake.session_duration_minutes ? `<p><span class="info-label">Duration:</span> ${intake.session_duration_minutes} minutes</p>` : ''}
+                        <p><span class="info-label">Payment Status:</span> Paid</p>
+                        <p><span class="info-label">Appointment Status:</span> Confirmed</p>
+                      </div>
+                      <p>Your appointment is now confirmed. You will receive reminders 1 day and 1 hour before your appointment.</p>
+                      <p>If you have any questions, please contact us at nextstepmentorship@gmail.com</p>
+                    </div>
+                  </div>
+                </body>
+                </html>
+              `,
+              text: `Payment Confirmed - Appointment ${intake.appointment_code || row.id}\n\nDear ${row.client_name},\n\n✅ Payment received and appointment approved!\n\nAppointment Code: ${intake.appointment_code || row.id}\nDate & Time: ${formattedDate}\nCounselor: ${row.counselor_name || ''}\n${intake.session_mode ? `Session Mode: ${intake.session_mode}\n` : ''}${intake.session_duration_minutes ? `Duration: ${intake.session_duration_minutes} minutes\n` : ''}Payment Status: Paid\nAppointment Status: Confirmed\n\nYour appointment is now confirmed. You will receive reminders 1 day and 1 hour before your appointment.\n\nIf you have any questions, please contact us at nextstepmentorship@gmail.com`
+            });
+            console.log(`✅ Payment confirmation email sent to ${intake.client_email} for appointment ${intake.appointment_code || row.id}`);
+          } catch (emailErr) {
+            console.error('Error sending payment confirmation email:', emailErr);
+          }
         }
       } catch (notifyErr) {
-        console.error('Notify client after paid error:', notifyErr);
+        console.error('[Payment Notification] ===== ERROR IN NOTIFICATION BLOCK =====');
+        console.error('[Payment Notification] Error details:', notifyErr);
+        console.error('[Payment Notification] Error stack:', notifyErr.stack);
+        console.error('[Payment Notification] Error message:', notifyErr.message);
       }
+    } else {
+      console.log(`[Payment Notification] Payment status is not 'paid', skipping notification. Status: ${payment_status}`);
     }
 
     res.json(updated);

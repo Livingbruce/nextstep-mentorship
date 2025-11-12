@@ -24,6 +24,19 @@ import SupportTickets from "./pages/SupportTickets.jsx";
 import Department from "./pages/Department.jsx";
 import Notifications from "./pages/Notifications.jsx";
 import Profile from "./pages/Profile.jsx";
+import BookingForm from "./pages/BookingForm.jsx";
+import BookingConfirmation from "./pages/BookingConfirmation.jsx";
+// Storefront pages
+import BooksHome from "./pages/store/BooksHome.jsx";
+import BookDetail from "./pages/store/BookDetail.jsx";
+import Checkout from "./pages/store/Checkout.jsx";
+import MyOrders from "./pages/store/MyOrders.jsx";
+import MyLibrary from "./pages/store/MyLibrary.jsx";
+import Wishlist from "./pages/store/Wishlist.jsx";
+import EmailLogin from "./pages/store/EmailLogin.jsx";
+import StoreProfile from "./pages/store/Profile.jsx";
+import StoreAuth from "./components/StoreAuth.jsx";
+import OrderThanks from "./pages/store/OrderThanks.jsx";
 
 const App = () => {
   return (
@@ -38,6 +51,19 @@ const App = () => {
           <Route path="/verify-email" element={<EmailVerification />} /> {/* Email verification route */}
           <Route path="/check-email" element={<CheckEmail />} /> {/* Email check page */}
           <Route path="/verification-pending" element={<VerificationPending />} /> {/* Verification pending page */}
+          <Route path="/booking" element={<BookingForm />} />
+          <Route path="/booking/confirmation" element={<BookingConfirmation />} />
+
+          {/* Public bookstore routes with email login */}
+          <Route path="/store/login" element={<EmailLogin />} />
+          <Route path="/store" element={<StoreAuth><BooksHome /></StoreAuth>} />
+          <Route path="/store/books/:id" element={<StoreAuth><BookDetail /></StoreAuth>} />
+          <Route path="/store/books/:id/checkout" element={<StoreAuth><Checkout /></StoreAuth>} />
+          <Route path="/store/thanks" element={<StoreAuth><OrderThanks /></StoreAuth>} />
+          <Route path="/account/orders" element={<StoreAuth><MyOrders /></StoreAuth>} />
+          <Route path="/account/library" element={<StoreAuth><MyLibrary /></StoreAuth>} />
+          <Route path="/account/wishlist" element={<StoreAuth><Wishlist /></StoreAuth>} />
+          <Route path="/account/profile" element={<StoreAuth><StoreProfile /></StoreAuth>} />
           
           {/* Protected routes without NavBar */}
           <Route path="/" element={

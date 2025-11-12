@@ -89,6 +89,13 @@ npm run dev
 Deploy both apps to Vercel as separate projects. The frontend uses the `frontend/` directory and the backend uses the `backend/` directory (serverless function at `api/index.js`).  
 See `DEPLOYMENT.md` for a detailed step-by-step guide, including required environment variables.
 
+## 🧠 Client Booking Portal
+
+- Public booking page lives at: `https://<frontend-domain>/booking`
+- The page submits securely to `POST /api/web-bookings`, which creates the appointment and stores consent metadata.
+- Telegram bot buttons now link directly to the booking page.
+- Set `FRONTEND_URL` in the backend environment so the bot and API can generate the correct booking link.
+
 ## 📁 Project Structure
 
 ```

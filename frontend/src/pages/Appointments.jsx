@@ -647,12 +647,38 @@ const Appointments = () => {
                       </div>
                       <details style={{ marginTop: '8px' }}>
                         <summary style={{ cursor: 'pointer', color: 'var(--text-secondary)' }}>Show details</summary>
-                        <div style={{ marginTop: '6px', fontSize: '13px', color: 'var(--text-secondary)' }}>
-                          {appointment.client_name && (<div>Name: {appointment.client_name}</div>)}
-                          {appointment.client_contact && (<div>Contact: {appointment.client_contact}</div>)}
-                          {appointment.session_type && (<div>Session: {appointment.session_type}</div>)}
-                          {appointment.session_duration && (<div>Duration: {appointment.session_duration}</div>)}
-                          {appointment.payment_method && (<div>Payment: {appointment.payment_method} ({appointment.payment_status || 'not yet paid'})</div>)}
+                        <div style={{ marginTop: '6px', fontSize: '13px', color: 'var(--text-secondary)', lineHeight: '1.6' }}>
+                          {appointment.client_name && (<div><strong>Name:</strong> {appointment.client_name}</div>)}
+                          {appointment.gender && (<div><strong>Gender:</strong> {appointment.gender}</div>)}
+                          {appointment.pronouns && (<div><strong>Pronouns:</strong> {appointment.pronouns}</div>)}
+                          {appointment.client_dob && (<div><strong>Date of Birth:</strong> {new Date(appointment.client_dob).toLocaleDateString()}</div>)}
+                          {(appointment.intake_phone || appointment.client_contact) && (
+                            <div><strong>Contact:</strong> {appointment.intake_phone || appointment.client_contact}</div>
+                          )}
+                          {appointment.intake_email && (<div><strong>Email:</strong> {appointment.intake_email}</div>)}
+                          {(appointment.county || appointment.town) && (
+                            <div><strong>Location:</strong> {[appointment.town, appointment.county].filter(Boolean).join(', ')}</div>
+                          )}
+                          {appointment.counseling_type && (<div><strong>Counseling Type:</strong> {appointment.counseling_type}</div>)}
+                          {appointment.session_type && (<div><strong>Session Mode:</strong> {appointment.session_type}</div>)}
+                          {appointment.session_duration && (<div><strong>Duration:</strong> {appointment.session_duration}</div>)}
+                          {appointment.intake_reason && (<div><strong>Reason:</strong> {appointment.intake_reason}</div>)}
+                          {(appointment.intake_session_goals || appointment.session_goals) && (
+                            <div><strong>Session Goals:</strong> {appointment.intake_session_goals || appointment.session_goals}</div>
+                          )}
+                          {appointment.issue_duration && (<div><strong>Issue Duration:</strong> {appointment.issue_duration}</div>)}
+                          {appointment.previous_counseling !== undefined && (
+                            <div><strong>Previous Counseling:</strong> {appointment.previous_counseling ? 'Yes' : 'No'}</div>
+                          )}
+                          {appointment.previous_counseling_details && (
+                            <div><strong>Previous Counseling Details:</strong> {appointment.previous_counseling_details}</div>
+                          )}
+                          {appointment.emergency_contact_name && (
+                            <div><strong>Emergency Contact:</strong> {appointment.emergency_contact_name} ({appointment.emergency_contact_phone})</div>
+                          )}
+                          {appointment.payment_method && (<div><strong>Payment:</strong> {appointment.payment_method} ({appointment.payment_status || 'not yet paid'})</div>)}
+                          {appointment.transaction_reference && (<div><strong>Transaction Reference:</strong> {appointment.transaction_reference}</div>)}
+                          {appointment.appointment_code && (<div><strong>Appointment Code:</strong> {appointment.appointment_code}</div>)}
                         </div>
                       </details>
                     </div>
@@ -712,12 +738,38 @@ const Appointments = () => {
                       </div>
                       <details style={{ marginTop: '8px' }}>
                         <summary style={{ cursor: 'pointer', color: 'var(--text-secondary)' }}>Show details</summary>
-                        <div style={{ marginTop: '6px', fontSize: '13px', color: 'var(--text-secondary)' }}>
-                          {appointment.client_name && (<div>Name: {appointment.client_name}</div>)}
-                          {appointment.client_contact && (<div>Contact: {appointment.client_contact}</div>)}
-                          {appointment.session_type && (<div>Session: {appointment.session_type}</div>)}
-                          {appointment.session_duration && (<div>Duration: {appointment.session_duration}</div>)}
-                          {appointment.payment_method && (<div>Payment: {appointment.payment_method} ({appointment.payment_status || 'not yet paid'})</div>)}
+                        <div style={{ marginTop: '6px', fontSize: '13px', color: 'var(--text-secondary)', lineHeight: '1.6' }}>
+                          {appointment.client_name && (<div><strong>Name:</strong> {appointment.client_name}</div>)}
+                          {appointment.gender && (<div><strong>Gender:</strong> {appointment.gender}</div>)}
+                          {appointment.pronouns && (<div><strong>Pronouns:</strong> {appointment.pronouns}</div>)}
+                          {appointment.client_dob && (<div><strong>Date of Birth:</strong> {new Date(appointment.client_dob).toLocaleDateString()}</div>)}
+                          {(appointment.intake_phone || appointment.client_contact) && (
+                            <div><strong>Contact:</strong> {appointment.intake_phone || appointment.client_contact}</div>
+                          )}
+                          {appointment.intake_email && (<div><strong>Email:</strong> {appointment.intake_email}</div>)}
+                          {(appointment.county || appointment.town) && (
+                            <div><strong>Location:</strong> {[appointment.town, appointment.county].filter(Boolean).join(', ')}</div>
+                          )}
+                          {appointment.counseling_type && (<div><strong>Counseling Type:</strong> {appointment.counseling_type}</div>)}
+                          {appointment.session_type && (<div><strong>Session Mode:</strong> {appointment.session_type}</div>)}
+                          {appointment.session_duration && (<div><strong>Duration:</strong> {appointment.session_duration}</div>)}
+                          {appointment.intake_reason && (<div><strong>Reason:</strong> {appointment.intake_reason}</div>)}
+                          {(appointment.intake_session_goals || appointment.session_goals) && (
+                            <div><strong>Session Goals:</strong> {appointment.intake_session_goals || appointment.session_goals}</div>
+                          )}
+                          {appointment.issue_duration && (<div><strong>Issue Duration:</strong> {appointment.issue_duration}</div>)}
+                          {appointment.previous_counseling !== undefined && (
+                            <div><strong>Previous Counseling:</strong> {appointment.previous_counseling ? 'Yes' : 'No'}</div>
+                          )}
+                          {appointment.previous_counseling_details && (
+                            <div><strong>Previous Counseling Details:</strong> {appointment.previous_counseling_details}</div>
+                          )}
+                          {appointment.emergency_contact_name && (
+                            <div><strong>Emergency Contact:</strong> {appointment.emergency_contact_name} ({appointment.emergency_contact_phone})</div>
+                          )}
+                          {appointment.payment_method && (<div><strong>Payment:</strong> {appointment.payment_method} ({appointment.payment_status || 'not yet paid'})</div>)}
+                          {appointment.transaction_reference && (<div><strong>Transaction Reference:</strong> {appointment.transaction_reference}</div>)}
+                          {appointment.appointment_code && (<div><strong>Appointment Code:</strong> {appointment.appointment_code}</div>)}
                         </div>
                       </details>
                     </div>

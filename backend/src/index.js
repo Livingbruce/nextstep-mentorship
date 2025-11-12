@@ -24,6 +24,8 @@ import recentActivityRoutes from "./routes/recentActivity.js";
 import mentorshipRoutes from "./routes/mentorships.js";
 import counselorsRoutes from "./routes/counselors.js";
 import notificationsRoutes from "./routes/notifications.js";
+import webBookingRoutes from "./routes/webBooking.js";
+import paymentsRoutes from "./routes/payments.js";
 
 // Security middleware
 import { 
@@ -251,7 +253,8 @@ app.get("/", (req, res) => {
       announcements: "/api/announcements",
       dashboard: "/api/dashboard",
       slots: "/api/slots",
-      therapistSignup: "/api/auth/therapist-signup"
+      therapistSignup: "/api/auth/therapist-signup",
+      webBookings: "/api/web-bookings"
     }
   });
 });
@@ -269,6 +272,8 @@ app.use("/api/counselors", counselorsRoutes);
 app.use("/api/slots", slotsRoutes);
 app.use("/api/recent-activity", recentActivityRoutes);
 app.use("/api/notifications", notificationsRoutes);
+app.use("/api/web-bookings", webBookingRoutes);
+app.use("/api/payments", paymentsRoutes);
 
 // Public books endpoint for bot (no auth required)
 app.get("/api/books/public", async (req, res) => {
@@ -285,6 +290,19 @@ app.get("/api/books/public", async (req, res) => {
   } catch (err) {
     console.error("Error fetching books:", err);
     res.status(500).json({ error: "Failed to fetch books" });
+  }
+});
+
+app.get("/api/counselors/public", async (_req, res) => {
+  try {
+    const pool = (await import("./db/pool.js")).default;
+    const { rows } = await pool.query(
+      "SELECT id, name FROM counselors WHERE is_active = true ORDER BY name"
+    );
+    res.json(rows);
+  } catch (error) {
+    console.error("Error fetching counselors:", error);
+    res.status(500).json({ error: "Failed to fetch counselors" });
   }
 });
 

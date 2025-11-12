@@ -1,4 +1,4 @@
-import { Telegraf } from "telegraf";
+import { Telegraf, Markup } from "telegraf";
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -12,9 +12,6 @@ const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.join(__dirname, "../.env") });
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
-
-const processedUpdateIds = new Map();
-const UPDATE_CACHE_MS = 5 * 60 * 1000; // 5 minutes
 
 const MENU_TEXT_COMMANDS = new Set([
   "Counselors",
@@ -76,8 +73,8 @@ const getApiUrl = () => {
   if (!isProduction) {
     if (process.env.LOCAL_API_URL && process.env.LOCAL_API_URL.trim() !== '') {
       return sanitizeUrl(process.env.LOCAL_API_URL.trim());
-    }
-    return 'http://localhost:5000';
+  }
+  return 'http://localhost:5000';
   }
 
   return sanitizeUrl('http://localhost:5000');
@@ -86,27 +83,44 @@ const getApiUrl = () => {
 const resolvedApiBaseUrl = getApiUrl();
 console.log(`[Telegram Bot] API base URL resolved to: ${resolvedApiBaseUrl}`);
 
+const getBookingPageUrl = () => {
+  if (process.env.FRONTEND_URL && process.env.FRONTEND_URL.trim() !== '') {
+    return `${sanitizeUrl(process.env.FRONTEND_URL.trim())}/booking`;
+  }
+
+  if (process.env.VERCEL_URL && process.env.VERCEL_URL.trim() !== '') {
+    return `https://${process.env.VERCEL_URL.trim().replace(/\/$/, '')}/booking`;
+  }
+
+  return "https://nextestep-mentorship.vercel.app/booking";
+};
+
+const getStorePageUrl = () => {
+  if (process.env.FRONTEND_URL && process.env.FRONTEND_URL.trim() !== '') {
+    return `${sanitizeUrl(process.env.FRONTEND_URL.trim())}/store`;
+  }
+
+  if (process.env.VERCEL_URL && process.env.VERCEL_URL.trim() !== '') {
+    return `https://${process.env.VERCEL_URL.trim().replace(/\/$/, '')}/store`;
+  }
+
+  return "https://nextestep-mentorship.vercel.app/store";
+};
+
 pool.query("SELECT 1")
   .then(() => console.log("[Telegram Bot] Database connection verified"))
   .catch((error) => console.error("[Telegram Bot] Database connection check failed:", error));
 
-bot.use(async (ctx, next) => {
-  const updateId = ctx.update?.update_id;
-  if (typeof updateId === 'number') {
-    const now = Date.now();
-    for (const [storedId, timestamp] of processedUpdateIds) {
-      if (now - timestamp > UPDATE_CACHE_MS) {
-        processedUpdateIds.delete(storedId);
-      }
-    }
-    if (processedUpdateIds.has(updateId)) {
-      console.warn(`Duplicate update ignored: ${updateId}`);
-      return;
-    }
-    processedUpdateIds.set(updateId, now);
-  }
-  return next();
+bot.catch((err, ctx) => {
+  console.error("Telegram bot error for update", ctx.update?.update_id, err);
 });
+
+const deleteMessageSilently = (ctx, messageId, label = 'message') => {
+  if (!messageId || !ctx?.telegram || !ctx?.chat) return;
+  ctx.telegram
+    .deleteMessage(ctx.chat.id, messageId)
+    .catch((err) => console.log(`[Telegram Bot] Could not delete ${label}:`, err?.message || err));
+};
 
 const createCachedFetcher = (loader, ttlMs = 60_000) => {
   let cache;
@@ -164,10 +178,10 @@ const fetchPublicActivities = createCachedFetcher(async () => {
 
 const fetchAvailableBooks = createCachedFetcher(async () => {
   const { rows } = await pool.query(
-    `SELECT b.id, b.title, b.author, b.description, b.price_cents, c.name AS counselor_name
+    `SELECT b.id, b.title, b.author, b.description, b.price_cents, b.chapter_count, b.page_count, b.format, c.name AS counselor_name
      FROM books b
      LEFT JOIN counselors c ON b.counselor_id = c.id
-     WHERE COALESCE(b.is_sold, false) = false
+     WHERE COALESCE(b.is_sold, false) = false AND COALESCE(b.is_active, true) = true
      ORDER BY b.created_at DESC
      LIMIT 20`
   );
@@ -336,9 +350,10 @@ async function getDashboardContacts() {
 // Helper function to get user's appointments
 async function getUserAppointments(telegramUserId) {
   try {
-    const result = await pool.query(
+    // First, try to find appointments by telegram_user_id
+    let result = await pool.query(
       `SELECT a.*, s.name as student_name, s.admission_no, s.phone, s.year_of_study as year,
-              cn.name as counselor_name, cl.full_name as client_name
+              cn.name as counselor_name, cl.full_name as client_name, cl.contact_info as client_contact_info
        FROM appointments a
        LEFT JOIN students s ON a.student_id = s.id
        LEFT JOIN clients cl ON a.client_id = cl.id
@@ -348,6 +363,44 @@ async function getUserAppointments(telegramUserId) {
        ORDER BY COALESCE(a.start_ts, a.appointment_date) DESC`,
       [telegramUserId]
     );
+    
+    // If no appointments found, try to find by phone/email from user_sessions or clients
+    if (result.rows.length === 0) {
+      // Get user info from user_sessions
+      const userSession = await pool.query(
+        `SELECT telegram_user_id, first_name, last_name, telegram_username FROM user_sessions WHERE telegram_user_id = $1`,
+        [telegramUserId]
+      );
+      
+      if (userSession.rows.length > 0) {
+        // Try to find appointments by matching phone/email from intake forms
+        // This handles web bookings where client doesn't have telegram_user_id
+        const username = userSession.rows[0].telegram_username || '';
+        const clientMatch = await pool.query(
+          `SELECT DISTINCT a.*, s.name as student_name, s.admission_no, s.phone, s.year_of_study as year,
+                  cn.name as counselor_name, cl.full_name as client_name, cl.contact_info as client_contact_info
+           FROM appointments a
+           LEFT JOIN students s ON a.student_id = s.id
+           LEFT JOIN clients cl ON a.client_id = cl.id
+           LEFT JOIN counselors cn ON a.counselor_id = cn.id
+           LEFT JOIN client_intake_forms cif ON cif.appointment_id = a.id
+           WHERE (a.status IS NULL OR a.status <> 'cancelled')
+             AND (
+               cl.contact_info LIKE $1
+               OR cif.phone LIKE $1
+               OR cif.email LIKE $1
+             )
+           ORDER BY COALESCE(a.start_ts, a.appointment_date) DESC
+           LIMIT 10`,
+          [`%${username}%`]
+        );
+        
+        if (clientMatch.rows.length > 0) {
+          result = clientMatch;
+        }
+      }
+    }
+    
     return result.rows;
   } catch (err) {
     console.error("Error fetching user appointments:", err);
@@ -609,23 +662,23 @@ async function handleBookOrderStep(ctx, session, userId, text) {
 
         if (!books || books.length === 0) {
           clearBookOrderSession(userId);
-          return ctx.reply("📚 **Books for Sale**\n\n⚠️ Coming soon...\n\nNo books are available for sale at the moment. Check back later for new releases!");
+          const storeUrl = getStorePageUrl();
+          return ctx.reply(
+            `📚 **Books for Sale**\n\n⚠️ Coming soon...\n\nNo books are available for sale at the moment. Check back later for new releases!\n\n🛒 Or visit our online store: ${storeUrl}`,
+            Markup.inlineKeyboard([
+              [{ text: "🛒 Visit Online Store", url: storeUrl }]
+            ])
+          );
         }
-
-        let msg = "📚 Available Books for Sale:\n\n";
-        books.forEach((book, i) => {
-          const price = typeof book.price_cents === 'number'
-            ? `KSh ${(book.price_cents / 100).toFixed(2)}`
-            : 'KSh 0.00';
-          msg += `${i + 1}. ${book.title} by ${book.author || 'Unknown Author'}\n`;
-          msg += `   Price: ${price}\n`;
-          if (book.description) msg += `   Description: ${book.description}\n`;
-          msg += "\n";
-        });
-        msg += "Do you want to buy a book? Reply with the number of the book you want to purchase, or type 'no' to cancel.";
-        session.step = 'choose_book';
-        session.data.books = books;
-        return ctx.reply(msg);
+        
+        const storeUrl = getStorePageUrl();
+        clearBookOrderSession(userId);
+        return ctx.reply(
+          `📚 To see books available and purchase follow👇\n\n🛒 Visit our online store: ${storeUrl}`,
+          Markup.inlineKeyboard([
+            [{ text: "🛒 Visit Online Store", url: storeUrl }]
+          ])
+        );
       }
       
       case 'choose_book': {
@@ -706,12 +759,12 @@ async function handleBookOrderStep(ctx, session, userId, text) {
       case 'payment_details': {
         session.data.paymentDetails = text.trim();
         session.step = 'confirm_order';
-
+        
         const book = session.data.selectedBook;
         const bookPrice = Number(book.price_cents || 0);
         const shippingCost = SHIPPING_COST_CENTS;
         const totalAmount = bookPrice + shippingCost;
-
+        
         let confirmMsg = `📋 Order Summary:\n\n`;
         confirmMsg += `📚 Book: ${book.title} by ${book.author || 'Unknown Author'}\n`;
         confirmMsg += `💰 Book Price: KSh ${(bookPrice / 100).toFixed(2)}\n`;
@@ -726,7 +779,7 @@ async function handleBookOrderStep(ctx, session, userId, text) {
         confirmMsg += `💳 Payment: ${session.data.paymentMethod}\n`;
         confirmMsg += `📝 Details: ${session.data.paymentDetails}\n\n`;
         confirmMsg += `Type 'confirm' to place this order, or 'cancel' to abort.`;
-
+        
         return ctx.reply(confirmMsg);
       }
       
@@ -752,24 +805,24 @@ async function handleBookOrderStep(ctx, session, userId, text) {
 
         try {
           const orderData = await createPublicBookOrder({
-            book_id: book.id,
+              book_id: book.id,
             client_telegram_id: String(userId),
-            client_name: session.data.contactName,
-            client_email: session.data.contactEmail,
-            client_phone: session.data.contactPhone,
-            client_address: session.data.address,
-            client_city: session.data.city,
-            client_country: session.data.country,
-            client_county: session.data.county || null,
-            client_postal_code: session.data.postalCode || null,
-            payment_method: session.data.paymentMethod,
-            payment_reference: session.data.paymentDetails,
+              client_name: session.data.contactName,
+              client_email: session.data.contactEmail,
+              client_phone: session.data.contactPhone,
+              client_address: session.data.address,
+              client_city: session.data.city,
+              client_country: session.data.country,
+              client_county: session.data.county || null,
+              client_postal_code: session.data.postalCode || null,
+              payment_method: session.data.paymentMethod,
+              payment_reference: session.data.paymentDetails,
             payment_amount_cents: bookPrice,
-            shipping_cost_cents: shippingCost,
+              shipping_cost_cents: shippingCost,
             total_amount_cents: totalAmount,
           });
-
-          clearBookOrderSession(userId);
+          
+            clearBookOrderSession(userId);
           return ctx.reply(
             `✅ Order placed successfully!\n\n` +
             `Order ID: #${orderData.id}\n` +
@@ -921,52 +974,73 @@ async function initiatePaymentProcess(ctx, appointmentId, data) {
   }
 }
 
-// M-Pesa payment prompt
+// M-Pesa payment prompt with STK push
 async function sendMpesaPaymentPrompt(ctx, appointmentCode, amount, phoneNumber) {
-  const message = `💳 **M-Pesa Payment Required**\n\n` +
-                 `Appointment ID: ${appointmentCode}\n` +
-                 `Amount: KES ${amount}\n` +
-                 `Phone: ${phoneNumber}\n\n` +
-                 `📱 **Payment Instructions:**\n` +
-                 `1. You will receive an M-Pesa prompt on ${phoneNumber}\n` +
-                 `2. Enter your M-Pesa PIN to complete payment\n` +
-                 `3. After payment, your therapist will approve it and you will receive a confirmation message\n\n` +
-                 `⏰ **Payment must be completed within 15 minutes**\n\n` +
-                 `We'll notify you after the counselor approves your payment.`;
-  
-  await ctx.reply(message);
-  
-  // TODO: Integrate with actual M-Pesa API
+  try {
+    const { initiateMpesaSTKPush } = await import("./services/paymentService.js");
+    
+    // Initiate STK push
+    const stkResult = await initiateMpesaSTKPush(
+      phoneNumber,
+      amount,
+      appointmentCode,
+      `Payment for appointment ${appointmentCode}`
+    );
+
+    if (stkResult.success) {
+      const message = `💳 **M-Pesa Payment**\n\n` +
+                     `Appointment ID: ${appointmentCode}\n` +
+                     `Amount: KES ${amount}\n` +
+                     `Phone: ${phoneNumber}\n\n` +
+                     `📱 **Payment Instructions:**\n` +
+                     `1. Check your phone ${phoneNumber} for an M-Pesa prompt\n` +
+                     `2. Enter your M-Pesa PIN to complete payment\n` +
+                     `3. Your appointment will be automatically confirmed once payment is received\n\n` +
+                     `⏰ **Payment must be completed within 2 minutes**\n\n` +
+                     `You'll receive a confirmation message once payment is processed.`;
+      
+      await ctx.reply(message);
+    } else {
+      await ctx.reply(
+        `⚠️ **Payment Error**\n\n` +
+        `We couldn't initiate the M-Pesa payment. Please try again or contact support.\n\n` +
+        `Error: ${stkResult.customerMessage || "Unknown error"}`
+      );
+    }
+  } catch (error) {
+    console.error("Error initiating M-Pesa payment:", error);
+    await ctx.reply(
+      `⚠️ **Payment Error**\n\n` +
+      `We encountered an error processing your payment. Please try again or contact support.\n\n` +
+      `Error: ${error.message}`
+    );
+  }
 }
 
-// Bank payment prompt
+// Bank/Card payment prompt
 async function sendBankPaymentPrompt(ctx, appointmentCode, amount, phoneNumber) {
-  // Fetch bank details from database
-  const bankName = await getSetting('bank_name', 'Bank Transfer');
-  const accountName = await getSetting('bank_account_name', 'NextStep Therapy Services');
-  const accountNumber = await getSetting('bank_account_number', null);
-  const paymentContact = await getSetting('payment_contact_phone', phoneNumber);
-  const orgName = await getSetting('organization_name', 'NextStep Therapy Services');
+  const { getAccountDetails } = await import("./services/paymentService.js");
+  const accountDetails = getAccountDetails();
   
-  if (!accountNumber) {
-    await ctx.reply(`⚠️ **Bank payment information is not yet configured.**\n\nPlease contact support for payment instructions.\n\nContact: ${paymentContact}`);
-    return;
-  }
-  
-  const message = `🏦 **Bank Transfer Payment Required**\n\n` +
+  const message = `🏦 **Bank/Card Payment**\n\n` +
                  `Appointment ID: ${appointmentCode}\n` +
-                 `Amount: KES ${amount}\n` +
-                 `Phone: ${phoneNumber}\n\n` +
-                 `📱 **Payment Instructions:**\n` +
-                 `1. Transfer KES ${amount} to our bank account:\n` +
-                 `   Bank: ${bankName}\n` +
-                 `   Account Name: ${accountName}\n` +
-                 `   Account Number: ${accountNumber}\n\n` +
-                 `2. Include your appointment code (${appointmentCode}) as the payment reference\n` +
-                 `3. Send proof of payment to ${paymentContact} or reply here with your transaction reference\n` +
-                 `4. After payment verification, your appointment will be confirmed\n\n` +
-                 `⏰ **Payment must be completed within 24 hours**\n\n` +
-                 `We'll notify you after the counselor approves your payment.`;
+                 `Amount: KES ${amount}\n\n` +
+                 `📱 **Payment Options:**\n\n` +
+                 `**Option 1: M-Pesa Paybill**\n` +
+                 `1. Go to M-Pesa menu\n` +
+                 `2. Select "Pay Bill"\n` +
+                 `3. Enter Business Number: ${accountDetails.paybillNumber}\n` +
+                 `4. Enter Account Number: ${appointmentCode}\n` +
+                 `5. Enter Amount: ${amount}\n` +
+                 `6. Enter your PIN and confirm\n\n` +
+                 `**Option 2: Bank Transfer**\n` +
+                 `1. Transfer KES ${amount} to:\n` +
+                 `   Account Name: ${accountDetails.accountName}\n` +
+                 `   Account Number: ${accountDetails.accountNumber}\n` +
+                 `   Reference: ${appointmentCode}\n\n` +
+                 `**Option 3: Card Payment**\n` +
+                 `Visit our website to pay with Visa or local Kenya cards.\n\n` +
+                 `After payment, your appointment will be confirmed automatically.`;
   
   await ctx.reply(message);
 }
@@ -1155,7 +1229,7 @@ bot.hears("Counselors", async (ctx) => {
       msg += `${i + 1}. ${c.name}\n`;
     });
     msg += "\nReady to book?\n";
-    msg += "Click 'Book Appointment' and I'll walk you through everything.";
+    msg += "Tap '📅 Book Appointment' to open our secure booking form.";
     ctx.reply(msg);
   } catch (err) {
     console.error("Counselors error:", err);
@@ -1165,26 +1239,25 @@ bot.hears("Counselors", async (ctx) => {
 
 // Enhanced booking process for international therapy services
 bot.hears("📅 Book Appointment", async (ctx) => {
-  try {
-    // Start booking session
-    startBookingSession(ctx.from.id);
-    
-    const orgName = await getSetting('organization_name', 'NextStep Therapy Services');
-    let msg = `🧠 **Welcome to ${orgName}!**\n\n`;
-    msg += "👋 Hi there! Would you like to book a therapy session?\n\n";
-    msg += "Please reply with:\n";
-    msg += "• **Yes** - to start booking\n";
-    msg += "• **No** - to cancel\n\n";
-    msg += "We offer professional counseling services with flexible scheduling options.";
-    
-    const replyMsg = await ctx.reply(msg, { parse_mode: 'Markdown' });
-    updateBookingSession(ctx.from.id, 'greeting', {});
-    const initialSession = getBookingSession(ctx.from.id);
-    initialSession.lastMessageId = replyMsg.message_id;
-  } catch (err) {
-    console.error("Book appointment error:", err);
-    ctx.reply("I'm sorry, there was an error processing your booking. Please try again or contact support.");
-  }
+  const bookingUrl = getBookingPageUrl();
+  const orgName = await getSetting('organization_name', 'NextStep Therapy Services');
+
+  await ctx.reply(
+    "Book Your Session Online\n\n" +
+      `Click the booking button below to open the ${orgName} appointment form and submit your details.`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: "Open Booking Form",
+              url: bookingUrl,
+            },
+          ],
+        ],
+      },
+    }
+  );
 });
 
 // Step-by-step booking handler will be added at the end
@@ -1195,7 +1268,7 @@ bot.hears("📋 My Appointments", async (ctx) => {
     const appointments = await getUserAppointments(ctx.from.id);
     
     if (appointments.length === 0) {
-      return ctx.reply("📋 You don't have any appointments yet!\n\nReady to book your first one? Just click '📅 Book Appointment' and I'll help you! 😊");
+      return ctx.reply("📋 You don't have any appointments yet!\n\nReady to book your first one? Tap '📅 Book Appointment' to open the online booking form. 😊");
     }
     
     let msg = "📋 **Here are your appointments:**\n\n";
@@ -1953,11 +2026,11 @@ bot.hears("📢 Announcements", async (ctx) => {
 bot.hears("🗓 Activities", async (ctx) => {
   try {
     const activities = await fetchPublicActivities();
-
+    
     if (!activities || activities.length === 0) {
       return ctx.reply("🗓 **Activities**\n\n⚠️ Coming soon...\n\nNo upcoming activities at the moment. Check back later for events and activities!");
     }
-
+    
     let msg = "🗓 **Upcoming Activities:**\n\n";
 
     activities.forEach((activity, index) => {
@@ -2111,6 +2184,11 @@ async function handleSupportSession(ctx, session, userId, text) {
 
 // Enhanced booking step handler for international therapy services
 async function handleBookingStep(ctx, session, userId, text) {
+  console.log('Booking step handler invoked', {
+    userId,
+    step: session.step,
+    text,
+  });
   try {
     switch (session.step) {
       case 'greeting':
@@ -2118,19 +2196,10 @@ async function handleBookingStep(ctx, session, userId, text) {
           updateBookingSession(userId, 'personal_info', {});
           
           // Delete user's input message and previous bot message for cleaner interface
-          try {
-            await ctx.telegram.deleteMessage(ctx.chat.id, ctx.message.message_id);
-          } catch (err) {
-            console.log("Could not delete user input message:", err.message);
-          }
-          
+          deleteMessageSilently(ctx, ctx.message.message_id, 'user reply (greeting)');
           const updatedSession = getBookingSession(userId);
           if (updatedSession.lastMessageId) {
-            try {
-              await ctx.telegram.deleteMessage(ctx.chat.id, updatedSession.lastMessageId);
-            } catch (err) {
-              console.log("Could not delete previous message:", err.message);
-            }
+            deleteMessageSilently(ctx, updatedSession.lastMessageId, 'previous prompt (greeting)');
           }
           
           const msg = await ctx.reply("Great! Let's get some details.\n\n📝 **Step 1 of 6: Personal Information**\n\nWhat's your full name?\n\nType your full name like this:\nJohn Doe");
@@ -2153,19 +2222,10 @@ async function handleBookingStep(ctx, session, userId, text) {
           updateBookingSession(userId, 'personal_info', { full_name: text.trim() });
           
           // Delete user's input message and previous bot message for cleaner interface
-          try {
-            await ctx.telegram.deleteMessage(ctx.chat.id, ctx.message.message_id);
-          } catch (err) {
-            console.log("Could not delete user input message:", err.message);
-          }
-          
+          deleteMessageSilently(ctx, ctx.message.message_id, 'user reply (name)');
           const updatedSession = getBookingSession(userId);
           if (updatedSession.lastMessageId) {
-            try {
-              await ctx.telegram.deleteMessage(ctx.chat.id, updatedSession.lastMessageId);
-            } catch (err) {
-              console.log("Could not delete previous message:", err.message);
-            }
+            deleteMessageSilently(ctx, updatedSession.lastMessageId, 'previous prompt (name)');
           }
           
           const msg = await ctx.reply("📅 What's your date of birth?\n\nType it like this:\n1990-01-15\n\n(YYYY-MM-DD format)");
@@ -2182,19 +2242,10 @@ async function handleBookingStep(ctx, session, userId, text) {
           updateBookingSession(userId, 'personal_info', { date_of_birth: text.trim() });
           
           // Delete user's input message and previous bot message for cleaner interface
-          try {
-            await ctx.telegram.deleteMessage(ctx.chat.id, ctx.message.message_id);
-          } catch (err) {
-            console.log("Could not delete user input message:", err.message);
-          }
-          
+          deleteMessageSilently(ctx, ctx.message.message_id, 'user reply (dob)');
           const updatedSession = getBookingSession(userId);
           if (updatedSession.lastMessageId) {
-            try {
-              await ctx.telegram.deleteMessage(ctx.chat.id, updatedSession.lastMessageId);
-            } catch (err) {
-              console.log("Could not delete previous message:", err.message);
-            }
+            deleteMessageSilently(ctx, updatedSession.lastMessageId, 'previous prompt (dob)');
           }
           
           const msg = await ctx.reply("📞 Please provide your PHONE NUMBER:\n\nType your phone number like this:\n+254712345678");
@@ -2209,20 +2260,12 @@ async function handleBookingStep(ctx, session, userId, text) {
           updateBookingSession(userId, 'session_details', { contact_phone: text.trim() });
           
           // Delete user's input message
-          try {
-            await ctx.telegram.deleteMessage(ctx.chat.id, ctx.message.message_id);
-          } catch (err) {
-            console.log("Could not delete user input message:", err.message);
-          }
+          deleteMessageSilently(ctx, ctx.message.message_id, 'user reply (phone)');
           
           // Ask for email
           const updatedSession = getBookingSession(userId);
           if (updatedSession.lastMessageId) {
-            try {
-              await ctx.telegram.deleteMessage(ctx.chat.id, updatedSession.lastMessageId);
-            } catch (err) {
-              console.log("Could not delete previous message:", err.message);
-            }
+            deleteMessageSilently(ctx, updatedSession.lastMessageId, 'previous prompt (phone)');
           }
           
           const emailMsg = await ctx.reply("📧 Now please provide your EMAIL ADDRESS:\n\nType your email like this:\njohn@example.com");
@@ -2237,19 +2280,10 @@ async function handleBookingStep(ctx, session, userId, text) {
           updateBookingSession(userId, 'session_details', { contact_email: text.trim() });
           
           // Delete user's input message and previous bot message for cleaner interface
-          try {
-            await ctx.telegram.deleteMessage(ctx.chat.id, ctx.message.message_id);
-          } catch (err) {
-            console.log("Could not delete user input message:", err.message);
-          }
-          
+          deleteMessageSilently(ctx, ctx.message.message_id, 'user reply (email)');
           const updatedSession = getBookingSession(userId);
           if (updatedSession.lastMessageId) {
-            try {
-              await ctx.telegram.deleteMessage(ctx.chat.id, updatedSession.lastMessageId);
-            } catch (err) {
-              console.log("Could not delete previous message:", err.message);
-            }
+            deleteMessageSilently(ctx, updatedSession.lastMessageId, 'previous prompt (email)');
           }
           
           const msg = await ctx.reply("📅 **Step 2 of 6: Session Details**\n\nWhen would you like to have your session?\n\nType the date and time like this:\n2024-01-20 14:30\n\n(YYYY-MM-DD HH:MM format)");
@@ -2292,19 +2326,10 @@ async function handleBookingStep(ctx, session, userId, text) {
           updateBookingSession(userId, 'session_details', { session_datetime: text.trim() });
           
           // Delete user's input message and previous bot message for cleaner interface
-          try {
-            await ctx.telegram.deleteMessage(ctx.chat.id, ctx.message.message_id);
-          } catch (err) {
-            console.log("Could not delete user input message:", err.message);
-          }
-          
+          deleteMessageSilently(ctx, ctx.message.message_id, 'user reply (session datetime)');
           const updatedSession = getBookingSession(userId);
           if (updatedSession.lastMessageId) {
-            try {
-              await ctx.telegram.deleteMessage(ctx.chat.id, updatedSession.lastMessageId);
-            } catch (err) {
-              console.log("Could not delete previous message:", err.message);
-            }
+            deleteMessageSilently(ctx, updatedSession.lastMessageId, 'previous prompt (session datetime)');
           }
           
           const msg = await ctx.reply("What type of session do you prefer?\n\nPlease reply with:\n• **Online (Video)**\n• **Phone**");
@@ -2322,19 +2347,10 @@ async function handleBookingStep(ctx, session, userId, text) {
           });
           
           // Delete user's input message and previous bot message for cleaner interface
-          try {
-            await ctx.telegram.deleteMessage(ctx.chat.id, ctx.message.message_id);
-          } catch (err) {
-            console.log("Could not delete user input message:", err.message);
-          }
-          
+          deleteMessageSilently(ctx, ctx.message.message_id, 'user reply (session type)');
           const updatedSession = getBookingSession(userId);
           if (updatedSession.lastMessageId) {
-            try {
-              await ctx.telegram.deleteMessage(ctx.chat.id, updatedSession.lastMessageId);
-            } catch (err) {
-              console.log("Could not delete previous message:", err.message);
-            }
+            deleteMessageSilently(ctx, updatedSession.lastMessageId, 'previous prompt (session type)');
           }
           
           const msg = await ctx.reply("How long would you like your session to be?\n\nPlease reply with:\n• **45 mins**\n• **60 mins**\n• **90 mins**");
@@ -2353,19 +2369,10 @@ async function handleBookingStep(ctx, session, userId, text) {
           });
           
           // Delete user's input message and previous bot message for cleaner interface
-          try {
-            await ctx.telegram.deleteMessage(ctx.chat.id, ctx.message.message_id);
-          } catch (err) {
-            console.log("Could not delete user input message:", err.message);
-          }
-          
+          deleteMessageSilently(ctx, ctx.message.message_id, 'user reply (session duration)');
           const updatedSession = getBookingSession(userId);
           if (updatedSession.lastMessageId) {
-            try {
-              await ctx.telegram.deleteMessage(ctx.chat.id, updatedSession.lastMessageId);
-            } catch (err) {
-              console.log("Could not delete previous message:", err.message);
-            }
+            deleteMessageSilently(ctx, updatedSession.lastMessageId, 'previous prompt (session duration)');
           }
           
           const msg = await ctx.reply("🎯 **Step 3 of 6: Therapy Context**\n\nCan you briefly describe what brings you to therapy?\n\nPlease share what you'd like to work on (this helps us match you with the right counselor).");
@@ -2383,19 +2390,10 @@ async function handleBookingStep(ctx, session, userId, text) {
           updateBookingSession(userId, 'therapy_context', { therapy_reason: text.trim() });
           
           // Delete user's input message and previous bot message for cleaner interface
-          try {
-            await ctx.telegram.deleteMessage(ctx.chat.id, ctx.message.message_id);
-          } catch (err) {
-            console.log("Could not delete user input message:", err.message);
-          }
-          
+          deleteMessageSilently(ctx, ctx.message.message_id, 'user reply (therapy reason)');
           const updatedSession = getBookingSession(userId);
           if (updatedSession.lastMessageId) {
-            try {
-              await ctx.telegram.deleteMessage(ctx.chat.id, updatedSession.lastMessageId);
-            } catch (err) {
-              console.log("Could not delete previous message:", err.message);
-            }
+            deleteMessageSilently(ctx, updatedSession.lastMessageId, 'previous prompt (therapy reason)');
           }
           
           const msg = await ctx.reply("What are your main goals for this session?\n\nPlease describe what you hope to achieve or work on during your therapy session.");
@@ -2409,19 +2407,10 @@ async function handleBookingStep(ctx, session, userId, text) {
           updateBookingSession(userId, 'therapy_context', { session_goals: text.trim() });
           
           // Delete user's input message and previous bot message for cleaner interface
-          try {
-            await ctx.telegram.deleteMessage(ctx.chat.id, ctx.message.message_id);
-          } catch (err) {
-            console.log("Could not delete user input message:", err.message);
-          }
-          
+          deleteMessageSilently(ctx, ctx.message.message_id, 'user reply (session goals)');
           const updatedSession = getBookingSession(userId);
           if (updatedSession.lastMessageId) {
-            try {
-              await ctx.telegram.deleteMessage(ctx.chat.id, updatedSession.lastMessageId);
-            } catch (err) {
-              console.log("Could not delete previous message:", err.message);
-            }
+            deleteMessageSilently(ctx, updatedSession.lastMessageId, 'previous prompt (session goals)');
           }
           
           const msg = await ctx.reply("Have you attended therapy before?\n\nPlease reply with:\n• **Yes**\n• **No**");
@@ -2494,19 +2483,10 @@ async function handleBookingStep(ctx, session, userId, text) {
           });
           
           // Delete user's input message and previous bot message for cleaner interface
-          try {
-            await ctx.telegram.deleteMessage(ctx.chat.id, ctx.message.message_id);
-          } catch (err) {
-            console.log("Could not delete user input message:", err.message);
-          }
-          
+          deleteMessageSilently(ctx, ctx.message.message_id, 'user reply (previous therapy)');
           const updatedSession = getBookingSession(userId);
           if (updatedSession.lastMessageId) {
-            try {
-              await ctx.telegram.deleteMessage(ctx.chat.id, updatedSession.lastMessageId);
-            } catch (err) {
-              console.log("Could not delete previous message:", err.message);
-            }
+            deleteMessageSilently(ctx, updatedSession.lastMessageId, 'previous prompt (previous therapy)');
           }
           
           const msg = await ctx.reply("How would you like to pay?\n\nPlease reply with:\n• **M-Pesa**\n• **Bank**");
@@ -2527,19 +2507,10 @@ async function handleBookingStep(ctx, session, userId, text) {
           });
           
           // Delete user's input message and previous bot message for cleaner interface
-          try {
-            await ctx.telegram.deleteMessage(ctx.chat.id, ctx.message.message_id);
-          } catch (err) {
-            console.log("Could not delete user input message:", err.message);
-          }
-          
+          deleteMessageSilently(ctx, ctx.message.message_id, 'user reply (counselor choice)');
           const updatedSession = getBookingSession(userId);
           if (updatedSession.lastMessageId) {
-            try {
-              await ctx.telegram.deleteMessage(ctx.chat.id, updatedSession.lastMessageId);
-            } catch (err) {
-              console.log("Could not delete previous message:", err.message);
-            }
+            deleteMessageSilently(ctx, updatedSession.lastMessageId, 'previous prompt (counselor list)');
           }
           
           const msg = await ctx.reply("✅ **Step 5 of 6: Confirmation & Consent**\n\nPlease review your details:\n\n" + formatBookingSummary(getBookingSession(userId).data) + "\n\nDo you confirm that everything is correct and you agree to our privacy policy?\n\nType 'yes' to confirm and proceed to payment, or 'no' to start over.");
@@ -2552,11 +2523,7 @@ async function handleBookingStep(ctx, session, userId, text) {
       case 'confirmation':
         if (text.toLowerCase().includes('yes')) {
           // Delete user's "yes" input message for cleaner interface
-          try {
-            await ctx.telegram.deleteMessage(ctx.chat.id, ctx.message.message_id);
-          } catch (err) {
-            console.log("Could not delete user input message:", err.message);
-          }
+          deleteMessageSilently(ctx, ctx.message.message_id, 'user reply (confirmation yes)');
           
           // Process the booking and initiate payment
           const currentSession = getBookingSession(userId);
@@ -2719,19 +2686,10 @@ async function handleBookingStep(ctx, session, userId, text) {
         updateBookingSession(userId, 'confirm', sessionData);
         
         // Delete user's input message and previous bot message for cleaner interface
-        try {
-          await ctx.telegram.deleteMessage(ctx.chat.id, ctx.message.message_id);
-        } catch (err) {
-          console.log("Could not delete user input message:", err.message);
-        }
-        
+        deleteMessageSilently(ctx, ctx.message.message_id, 'user reply (datetime confirm)');
         const updatedSession6 = getBookingSession(userId);
         if (updatedSession6.lastMessageId) {
-          try {
-            await ctx.telegram.deleteMessage(ctx.chat.id, updatedSession6.lastMessageId);
-          } catch (err) {
-            console.log("Could not delete previous message:", err.message);
-          }
+          deleteMessageSilently(ctx, updatedSession6.lastMessageId, 'previous prompt (datetime confirm)');
         }
         
         // Show summary for confirmation
@@ -2745,11 +2703,7 @@ async function handleBookingStep(ctx, session, userId, text) {
       case 'confirm':
         if (text.toLowerCase().includes('yes')) {
           // Delete user's "yes" input message for cleaner interface
-          try {
-            await ctx.telegram.deleteMessage(ctx.chat.id, ctx.message.message_id);
-          } catch (err) {
-            console.log("Could not delete user input message:", err.message);
-          }
+          deleteMessageSilently(ctx, ctx.message.message_id, 'user reply (confirm yes)');
           
           // Process the booking
           const currentSession = getBookingSession(userId);
@@ -2814,11 +2768,7 @@ async function handleBookingStep(ctx, session, userId, text) {
           // Delete all previous booking messages for clean interface
           const finalSession = getBookingSession(userId);
           if (finalSession.lastMessageId) {
-            try {
-              await ctx.telegram.deleteMessage(ctx.chat.id, finalSession.lastMessageId);
-            } catch (err) {
-              console.log("Could not delete previous message:", err.message);
-            }
+            deleteMessageSilently(ctx, finalSession.lastMessageId, 'booking summary message');
           }
 
           ctx.reply(`Appointment Booked Successfully!\n\n` +
@@ -2988,36 +2938,36 @@ bot.command('myorders', async (ctx) => {
   try {
     const userId = ctx.from.id;
     const orders = await fetchClientBookOrders(String(userId));
-
+    
     if (!orders || orders.length === 0) {
-      return ctx.reply("📦 You have no orders yet.\n\nType /books to browse and purchase books!");
-    }
-
-    let msg = "📦 Your Book Orders:\n\n";
-    orders.forEach((order, i) => {
-      const statusIcon = {
+        return ctx.reply("📦 You have no orders yet.\n\nType /books to browse and purchase books!");
+      }
+      
+      let msg = "📦 Your Book Orders:\n\n";
+      orders.forEach((order, i) => {
+        const statusIcon = {
         ordered: '📋',
         paid: '💰',
         shipped: '📦',
         delivered: '✅',
         cancelled: '❌',
-      }[order.order_status] || '❓';
-
-      msg += `${i + 1}. ${statusIcon} Order #${order.id}\n`;
-      msg += `   📚 ${order.book_title} by ${order.book_author}\n`;
+        }[order.order_status] || '❓';
+        
+        msg += `${i + 1}. ${statusIcon} Order #${order.id}\n`;
+        msg += `   📚 ${order.book_title} by ${order.book_author}\n`;
       msg += `   💳 Total: KSh ${(Number(order.total_amount_cents || 0) / 100).toFixed(2)}\n`;
-      msg += `   📊 Status: ${order.order_status.toUpperCase()}\n`;
-
-      if (order.tracking_number) {
-        msg += `   📦 Tracking: ${order.tracking_number}\n`;
-      }
-      if (order.estimated_delivery_date) {
-        msg += `   📅 Est. Delivery: ${new Date(order.estimated_delivery_date).toLocaleDateString()}\n`;
-      }
-      msg += `   📅 Ordered: ${new Date(order.created_at).toLocaleDateString()}\n\n`;
-    });
-
-    return ctx.reply(msg);
+        msg += `   📊 Status: ${order.order_status.toUpperCase()}\n`;
+        
+        if (order.tracking_number) {
+          msg += `   📦 Tracking: ${order.tracking_number}\n`;
+        }
+        if (order.estimated_delivery_date) {
+          msg += `   📅 Est. Delivery: ${new Date(order.estimated_delivery_date).toLocaleDateString()}\n`;
+        }
+        msg += `   📅 Ordered: ${new Date(order.created_at).toLocaleDateString()}\n\n`;
+      });
+      
+      return ctx.reply(msg);
   } catch (err) {
     console.error('My orders command error:', err);
     return ctx.reply('I could not load your orders right now. Please try again later.');
@@ -3078,27 +3028,25 @@ bot.command('review', async (ctx) => {
 });
 
 bot.command('book', async (ctx) => {
-  try {
-    const result = await pool.query("SELECT id, name FROM counselors");
-    if (result.rows.length === 0) {
-      return ctx.reply("Sorry, no counselors are available right now. Please contact admin for help! 😔");
+  const bookingUrl = getBookingPageUrl();
+  const orgName = await getSetting('organization_name', 'NextStep Therapy Services');
+
+  await ctx.reply(
+    `✨ Ready to book your session with ${orgName}?` +
+      `\n\nClick the button below to open the appointment form and fill in your details.`,
+    {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: "Open Booking Form",
+              url: bookingUrl,
+            },
+          ],
+        ],
+      },
     }
-    
-    // Start booking session
-    startBookingSession(ctx.from.id);
-    
-    let msg = "📅 Let's Book Your Appointment! 🎉\n\n";
-    msg += "Don't worry, I'll guide you through this step by step. It's really easy!\n\n";
-    msg += "Step 1 of 6: What's your full name?\n\n";
-    msg += "Just type your name like this:\n";
-    msg += "`John Doe`\n\n";
-    msg += "**Take your time - no rush!** 😊";
-    
-    ctx.reply(msg, { parse_mode: 'Markdown' });
-  } catch (err) {
-    console.error("Book appointment error:", err);
-    ctx.reply("I'm sorry, there was an error processing your booking. Please try again or contact support.");
-  }
+  );
 });
 
 bot.command('appointments', async (ctx) => {
@@ -3106,7 +3054,7 @@ bot.command('appointments', async (ctx) => {
     const appointments = await getUserAppointments(ctx.from.id);
     
     if (appointments.length === 0) {
-      return ctx.reply("You don't have any appointments yet!\n\nReady to book your first one? Just type /book and I'll help you.");
+      return ctx.reply("You don't have any appointments yet!\n\nReady to book your first one? Tap '📅 Book Appointment' to open the booking form.");
     }
     
     let msg = "Here are your appointments:\n\n";
@@ -3222,44 +3170,46 @@ Remember: I'm here 24/7 to support you!`;
 
 // Add intelligent conversation flow handler with vertical command list
 bot.on('text', async (ctx) => {
-  const text = ctx.message.text.toLowerCase().trim();
+  const originalText = ctx.message.text;
+  const trimmedText = originalText.trim();
+  const text = trimmedText.toLowerCase();
   const userId = ctx.from.id;
   const session = getBookingSession(userId);
   const supportSession = getSupportSession(userId);
   const mentorshipSession = getMentorshipSession(userId);
   const reviewSession = getReviewSession(userId);
   
-  if (MENU_TEXT_COMMANDS.has(ctx.message.text.trim())) {
+  if (!session && MENU_TEXT_COMMANDS.has(trimmedText)) {
     return;
   }
   
   // Handle support session first
   if (supportSession) {
-    await handleSupportSession(ctx, supportSession, userId, ctx.message.text);
+    await handleSupportSession(ctx, supportSession, userId, originalText);
     return;
   }
   // Handle mentorship application session
   if (mentorshipSession) {
-    await handleMentorshipStep(ctx, mentorshipSession, userId, ctx.message.text);
+    await handleMentorshipStep(ctx, mentorshipSession, userId, originalText);
     return;
   }
   
   // Handle review session
   if (reviewSession) {
-    await handleReviewStep(ctx, reviewSession, userId, ctx.message.text);
+    await handleReviewStep(ctx, reviewSession, userId, originalText);
     return;
   }
   
   // Handle book ordering session
   const bookOrderSession = getBookOrderSession(userId);
   if (bookOrderSession) {
-    await handleBookOrderStep(ctx, bookOrderSession, userId, ctx.message.text);
+    await handleBookOrderStep(ctx, bookOrderSession, userId, originalText);
     return;
   }
   
   // Handle booking session
   if (session) {
-    await handleBookingStep(ctx, session, userId, ctx.message.text);
+    await handleBookingStep(ctx, session, userId, originalText);
     return;
   }
   

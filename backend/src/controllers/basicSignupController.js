@@ -67,8 +67,18 @@ export const basicSignup = async (req, res) => {
     try {
       await emailService.sendEmailVerification(email, firstName, verificationToken);
     } catch (emailError) {
-      console.error('Email sending failed, but user created:', emailError);
-      // Don't fail the signup if email fails, just log it
+      console.error('❌ Failed to send verification email:', emailError);
+      
+      // Clean up by removing the newly created counselor to avoid unusable accounts
+      await pool.query(
+        'DELETE FROM counselors WHERE id = $1',
+        [newCounselor.id]
+      );
+      
+      return res.status(500).json({
+        error: 'Failed to send verification email. Please try again later or contact support.',
+        details: emailError.message || 'Email service not configured'
+      });
     }
 
     res.status(201).json({

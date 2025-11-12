@@ -170,14 +170,21 @@ const generateRecentActivities = () => {
 // Create a default export with axios-like API for the new pages
 const api = {
   get: async (url) => {
-    // If it's a real API call, use the Railway backend
+    // Allow public bookstore endpoints without auth
+    const isPublicStore = url.startsWith('/api/books/store');
+
+    // If it's a real API call, use the backend
     if (url.startsWith('/api/') || url.startsWith('/api/dashboard/') || url.startsWith('/auth/') || url.startsWith('/api/auth/')) {
       try {
-        // Get token from localStorage
-        const token = localStorage.getItem('token');
-        if (!token) {
-          console.warn('⚠️ No token found for API call:', url);
-          return [];
+        const headers = { 'Content-Type': 'application/json' };
+        if (!isPublicStore) {
+          // Get token from localStorage
+          const token = localStorage.getItem('token');
+          if (!token) {
+            console.warn('⚠️ No token found for API call:', url);
+            return [];
+          }
+          headers['Authorization'] = `Bearer ${token}`;
         }
 
         // Only log in development mode
@@ -186,11 +193,8 @@ const api = {
         }
         
         const response = await fetch(`${API_BASE_URL}${url}`, {
-          credentials: 'include', // Required for CORS with credentials
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
+          credentials: isPublicStore ? 'same-origin' : 'include',
+          headers,
         });
         
         if (!response.ok) {
@@ -253,25 +257,29 @@ const api = {
   },
 
   post: async (url, data) => {
-    // If it's a real API call, use the Railway backend
+    // Allow public bookstore endpoints without auth
+    const isPublicStore = url.startsWith('/api/books/store');
+
+    // If it's a real API call, use the backend
     if (url.startsWith('/api/') || url.startsWith('/api/dashboard/') || url.startsWith('/auth/') || url.startsWith('/api/auth/')) {
       try {
-        // Get token from localStorage
-        const token = localStorage.getItem('token');
-        if (!token) {
-          console.warn('⚠️ No token found for API call:', url);
-          // Don't redirect immediately - let AuthContext handle it
-          throw new Error('No authentication token');
+        const headers = { 'Content-Type': 'application/json' };
+        if (!isPublicStore) {
+          // Get token from localStorage
+          const token = localStorage.getItem('token');
+          if (!token) {
+            console.warn('⚠️ No token found for API call:', url);
+            // Don't redirect immediately - let AuthContext handle it
+            throw new Error('No authentication token');
+          }
+          headers['Authorization'] = `Bearer ${token}`;
         }
 
         console.log('🚀 API.post making call to:', `${API_BASE_URL}${url}`);
         const response = await fetch(`${API_BASE_URL}${url}`, {
           method: 'POST',
-          credentials: 'include', // Required for CORS with credentials
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
+          credentials: isPublicStore ? 'same-origin' : 'include',
+          headers,
           body: JSON.stringify(data),
         });
         
@@ -335,7 +343,7 @@ const api = {
     throw new Error('Invalid API call');
   },
 
-  put: async (url, data) => {
+  put: async (url, data, isFormData = false) => {
     // If it's a real API call, use the Railway backend
     if (url.startsWith('/api/') || url.startsWith('/api/dashboard/') || url.startsWith('/auth/') || url.startsWith('/api/auth/')) {
       try {
@@ -347,14 +355,20 @@ const api = {
         }
 
         console.log('🚀 API.put making call to:', `${API_BASE_URL}${url}`);
+        const headers = {
+          'Authorization': `Bearer ${token}`,
+        };
+        
+        // Don't set Content-Type for FormData - browser will set it with boundary
+        if (!isFormData) {
+          headers['Content-Type'] = 'application/json';
+        }
+        
         const response = await fetch(`${API_BASE_URL}${url}`, {
           method: 'PUT',
           credentials: 'include', // Required for CORS with credentials
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify(data),
+          headers,
+          body: isFormData ? data : JSON.stringify(data),
         });
         
         console.log('📡 API.put Response status:', response.status);
@@ -368,6 +382,47 @@ const api = {
         return result;
       } catch (error) {
         console.error('❌ API.put call failed:', error);
+        throw error;
+      }
+    }
+    
+    // If not an API call, throw error
+    throw new Error('Invalid API call');
+  },
+  
+  postFormData: async (url, formData) => {
+    // If it's a real API call, use the Railway backend
+    if (url.startsWith('/api/') || url.startsWith('/api/dashboard/') || url.startsWith('/auth/') || url.startsWith('/api/auth/')) {
+      try {
+        // Get token from localStorage
+        const token = localStorage.getItem('token');
+        if (!token) {
+          console.warn('⚠️ No token found for API call:', url);
+          throw new Error('No authentication token');
+        }
+
+        console.log('🚀 API.postFormData making call to:', `${API_BASE_URL}${url}`);
+        const response = await fetch(`${API_BASE_URL}${url}`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            // Don't set Content-Type - browser will set it with boundary for FormData
+          },
+          body: formData,
+        });
+        
+        console.log('📡 API.postFormData Response status:', response.status);
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        console.log('✅ API.postFormData Response data:', result);
+        return result;
+      } catch (error) {
+        console.error('❌ API.postFormData call failed:', error);
         throw error;
       }
     }

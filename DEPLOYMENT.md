@@ -38,6 +38,17 @@ After the first deployment finishes, note the generated production URL (e.g. `ht
    - `ALLOW_VERCEL_PREVIEWS=true` *(optional to allow any `https://*.vercel.app` origin)*
    - `BOT_TOKEN` *(optional – only if the Telegram bot should run inside Vercel; otherwise host the bot elsewhere)*
    - `TELEGRAM_WEBHOOK_URL=https://nextestep-mentorship.vercel.app/api/telegram/webhook` *(set to your production alias so Telegram can reach the webhook)*
+   
+   **Payment System Environment Variables:**
+   - `MPESA_CONSUMER_KEY` - M-Pesa Daraja API consumer key
+   - `MPESA_CONSUMER_SECRET` - M-Pesa Daraja API consumer secret
+   - `MPESA_PASSKEY` - M-Pesa Daraja API passkey
+   - `MPESA_SHORTCODE=522522` - Paybill number
+   - `MPESA_BASE_URL=https://api.safaricom.co.ke` - Production URL (use `https://sandbox.safaricom.co.ke` for testing)
+   - `MPESA_CALLBACK_URL=https://<your-backend-domain>/api/payments/mpesa/callback` - M-Pesa webhook URL
+   - `PAYMENT_GATEWAY_API_KEY` - Payment gateway API key (Pesapal/Flutterwave/Stripe)
+   - `PAYMENT_GATEWAY_API_SECRET` - Payment gateway API secret
+   - `PAYMENT_GATEWAY_BASE_URL` - Payment gateway base URL (e.g., `https://api.pesapal.com`)
 
 > **Note:** The backend uses `serverless-http` to expose the existing Express app through `backend/api/index.js`. The Telegram bot only launches when `process.env.BOT_TOKEN` is set and Vercel is not running (see `src/index.js`).
 

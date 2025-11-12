@@ -3,32 +3,49 @@ import crypto from 'crypto';
 
 class EmailService {
   constructor() {
+    // Check if email credentials are configured
+    const hasEmailConfig = process.env.EMAIL_USER && process.env.EMAIL_PASS && 
+                          process.env.EMAIL_USER !== 'your-email' && 
+                          process.env.EMAIL_PASS !== 'your-app-password';
+    
     // Configure transporter (using Gmail SMTP for now)
-    this.transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: process.env.EMAIL_USER || 'nextstepmentorship@gmail.com',
-        pass: process.env.EMAIL_PASS || 'your-app-password'
-      }
-    });
-
-    // For development, we'll use a fake transporter that logs emails
-    if (process.env.NODE_ENV !== 'production') {
+    if (hasEmailConfig) {
+      this.transporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: {
+          user: process.env.EMAIL_USER,
+          pass: process.env.EMAIL_PASS
+        }
+      });
+      this.usingRealSMTP = true;
+      console.log('✅ Email service configured with real SMTP');
+    } else {
+      // For development or when credentials are not configured, use a fake transporter that logs emails
+      console.warn('⚠️  Email credentials not configured. Using fake transporter (emails will be logged only).');
       this.transporter = {
         sendMail: async (options) => {
-          console.log('\n📧 EMAIL CONFIRMATION SENT:');
+          console.log('\n📧 EMAIL CONFIRMATION SENT (FAKE MODE):');
           console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
           console.log(`From: NextStep Mentorship <nextstepmentorship@gmail.com>`);
           console.log(`To: ${options.to}`);
           console.log(`Subject: ${options.subject}`);
           console.log('\n📄 Email Content:');
           console.log(options.html || options.text);
+          if (options.attachments) {
+            console.log(`\n📎 Attachments: ${options.attachments.length} file(s)`);
+            options.attachments.forEach((att, i) => {
+              console.log(`  ${i + 1}. ${att.filename || att.path}`);
+            });
+          }
           console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
           
           return { messageId: crypto.randomBytes(16).toString('hex') };
         }
       };
+      this.usingRealSMTP = false;
     }
+
+    this.hasEmailConfig = hasEmailConfig;
   }
 
   generateEmailVerificationHTML(userName, verificationToken) {
@@ -191,8 +208,13 @@ class EmailService {
   }
 
   async sendEmailVerification(email, firstName, verificationToken) {
+    if (!this.hasEmailConfig || !this.usingRealSMTP) {
+      console.error('❌ Email verification aborted: Email service credentials are not configured.');
+      throw new Error('Email service not configured. Please set EMAIL_USER and EMAIL_PASS environment variables.');
+    }
+
     const mailOptions = {
-      from: '"NextStep Mentorship" <nextstepmentorship@gmail.com>',
+      from: `"NextStep Mentorship" <${process.env.EMAIL_USER || 'dsnurturers@gmail.com'}>`,
       to: email,
       subject: 'Welcome to NextStep - Confirm Your Account',
       html: this.generateEmailVerificationHTML(firstName, verificationToken),

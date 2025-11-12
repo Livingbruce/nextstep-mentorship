@@ -1,10 +1,10 @@
 /**
  * Working Hours Validation Utility
- * Implements Kenya Labor Standards for appointment scheduling
+ * Implements appointment scheduling
  * 
- * Working Hours: 8:00 AM - 5:00 PM (Monday to Friday)
- * Lunch Break: 12:00 PM - 1:00 PM (1 hour)
- * Weekends: No appointments allowed
+ * Working Hours: 8:00 AM - 5:00 PM (All days including weekends)
+ * No lunch break restrictions
+ * Weekends allowed
  */
 
 export class WorkingHoursValidator {
@@ -12,11 +12,9 @@ export class WorkingHoursValidator {
     this.WORKING_HOURS = {
       START_HOUR: 8,    // 8:00 AM
       END_HOUR: 17,     // 5:00 PM
-      LUNCH_START: 12,  // 12:00 PM
-      LUNCH_END: 13     // 1:00 PM
     };
     
-    this.WORKING_DAYS = [1, 2, 3, 4, 5]; // Monday to Friday (0 = Sunday)
+    this.WORKING_DAYS = [0, 1, 2, 3, 4, 5, 6]; // All days (0 = Sunday, 6 = Saturday)
   }
 
   /**
@@ -32,17 +30,30 @@ export class WorkingHoursValidator {
       return { isValid: false, reason: "Invalid date format" };
     }
 
-    // Check if it's a working day (Monday to Friday)
-    const dayOfWeek = date.getDay();
+    // Get time components in Kenya timezone (Africa/Nairobi, UTC+3)
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: "Africa/Nairobi",
+      hour: "numeric",
+      minute: "numeric",
+      hour12: false,
+      weekday: "short"
+    });
+    
+    const parts = formatter.formatToParts(date);
+    const hour = parseInt(parts.find(p => p.type === "hour").value, 10);
+    const minute = parseInt(parts.find(p => p.type === "minute").value, 10);
+    const weekday = parts.find(p => p.type === "weekday").value;
+    const timeInHours = hour + (minute / 60);
+    
+    // Map weekday to day of week (0 = Sunday)
+    const weekdayMap = { "Sun": 0, "Mon": 1, "Tue": 2, "Wed": 3, "Thu": 4, "Fri": 5, "Sat": 6 };
+    const dayOfWeek = weekdayMap[weekday];
+    
+    // Check if it's a working day (all days allowed) in Kenya timezone
     if (!this.WORKING_DAYS.includes(dayOfWeek)) {
       const dayName = this.getDayName(dayOfWeek);
       return { isValid: false, reason: `Appointments are not available on ${dayName}s` };
     }
-
-    // Get time components
-    const hour = date.getHours();
-    const minute = date.getMinutes();
-    const timeInHours = hour + (minute / 60);
 
     // Check if it's before working hours
     if (timeInHours < this.WORKING_HOURS.START_HOUR) {
@@ -52,11 +63,6 @@ export class WorkingHoursValidator {
     // Check if it's after working hours
     if (timeInHours >= this.WORKING_HOURS.END_HOUR) {
       return { isValid: false, reason: "Appointments are only available until 5:00 PM" };
-    }
-
-    // Check if it's during lunch break
-    if (timeInHours >= this.WORKING_HOURS.LUNCH_START && timeInHours < this.WORKING_HOURS.LUNCH_END) {
-      return { isValid: false, reason: "Appointments are not available during lunch break (12:00 PM - 1:00 PM)" };
     }
 
     return { isValid: true, reason: "Valid working time" };
@@ -77,8 +83,18 @@ export class WorkingHoursValidator {
       return { isValid: false, reason: "End time must be after start time" };
     }
 
-    // Check if both times are on the same day
-    if (start.toDateString() !== end.toDateString()) {
+    // Check if both times are on the same day (in Kenya timezone)
+    const getKenyaDateString = (date) => {
+      const formatter = new Intl.DateTimeFormat("en-US", {
+        timeZone: "Africa/Nairobi",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit"
+      });
+      return formatter.format(date);
+    };
+    
+    if (getKenyaDateString(start) !== getKenyaDateString(end)) {
       return { isValid: false, reason: "Appointments cannot span multiple days" };
     }
 
@@ -94,15 +110,20 @@ export class WorkingHoursValidator {
       return endValidation;
     }
 
-    // Check if the appointment duration crosses break times
-    const startHour = start.getHours() + (start.getMinutes() / 60);
-    const endHour = end.getHours() + (end.getMinutes() / 60);
-
-    // Check if appointment crosses lunch break
-    if (startHour < this.WORKING_HOURS.LUNCH_START && endHour > this.WORKING_HOURS.LUNCH_START) {
-      return { isValid: false, reason: "Appointments cannot be scheduled across lunch break (12:00 PM - 1:00 PM)" };
-    }
-
+    // Check if the appointment duration crosses break times (in Kenya timezone)
+    const getKenyaTime = (date) => {
+      const formatter = new Intl.DateTimeFormat("en-US", {
+        timeZone: "Africa/Nairobi",
+        hour: "numeric",
+        minute: "numeric",
+        hour12: false
+      });
+      const parts = formatter.formatToParts(date);
+      const hour = parseInt(parts.find(p => p.type === "hour").value, 10);
+      const minute = parseInt(parts.find(p => p.type === "minute").value, 10);
+      return hour + (minute / 60);
+    };
+    
     return { isValid: true, reason: "Valid appointment time range" };
   }
 
@@ -126,12 +147,6 @@ export class WorkingHoursValidator {
     let currentHour = this.WORKING_HOURS.START_HOUR;
 
     while (currentHour + slotDurationHours <= this.WORKING_HOURS.END_HOUR) {
-      // Skip lunch break
-      if (currentHour >= this.WORKING_HOURS.LUNCH_START && currentHour < this.WORKING_HOURS.LUNCH_END) {
-        currentHour = this.WORKING_HOURS.LUNCH_END;
-        continue;
-      }
-
       // Create slot
       const slotStart = new Date(targetDate);
       slotStart.setHours(Math.floor(currentHour), (currentHour % 1) * 60, 0, 0);
@@ -160,9 +175,7 @@ export class WorkingHoursValidator {
     return {
       workingDays: this.WORKING_DAYS.map(day => this.getDayName(day)),
       workingHours: "8:00 AM - 5:00 PM",
-      lunchBreak: "12:00 PM - 1:00 PM",
-      totalWorkingHours: 8,
-      breakHours: 1
+      totalWorkingHours: 9
     };
   }
 
