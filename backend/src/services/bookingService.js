@@ -53,8 +53,6 @@ async function ensureAmountCentsColumn() {
   }
 }
 
-let intakeTableEnsured = false;
-
 async function ensureIntakeTable() {
   if (intakeTableEnsured) {
     return;
