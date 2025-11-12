@@ -742,14 +742,23 @@ async function handleBookOrderStep(ctx, session, userId, text) {
       
       case 'payment_method': {
         const paymentMethod = text.trim().toLowerCase();
-        if (!['m-pesa', 'mpesa', 'bank', 'bank transfer'].includes(paymentMethod)) {
-          return ctx.reply("Please choose either 'M-Pesa' or 'Bank Transfer' as your payment method.");
+        if (!['m-pesa', 'mpesa', 'card'].includes(paymentMethod)) {
+          return ctx.reply("Please choose either 'M-Pesa' or 'Card' as your payment method.");
         }
         
-        session.data.paymentMethod = paymentMethod.includes('mpesa') ? 'M-Pesa' : 'Bank Transfer';
-        session.step = 'payment_details';
+        session.data.paymentMethod = paymentMethod.includes('mpesa') ? 'M-Pesa' : 'Card';
         
         if (paymentMethod.includes('mpesa')) {
+          // Ask for M-Pesa phone number
+          session.step = 'mpesa_phone';
+          return ctx.reply("📱 **M-Pesa Payment**\n\nPlease enter your M-Pesa phone number (e.g., 254712345678):\n\nYou will receive an M-Pesa prompt on this number to complete payment.");
+        } else {
+          // For Card, redirect to web form or collect details
+          session.step = 'payment_details';
+          return ctx.reply("💳 **Card Payment**\n\nFor card payments, please visit our website to complete your booking:\n" + (process.env.FRONTEND_URL || 'https://your-frontend-domain.vercel.app') + "/booking\n\nOr reply with 'back' to choose M-Pesa instead.");
+        }
+        
+        if (false) { // This block is now unreachable but kept for reference
           return ctx.reply("10. M-Pesa Payment Details:\nPlease provide:\n- Phone number used for M-Pesa\n- Transaction reference (if already paid)\n\nFormat: Phone Number, Transaction Reference\nExample: 254712345678, QXY123456789");
         } else {
           return ctx.reply("10. Bank Transfer Details:\nPlease provide:\n- Bank name\n- Account number\n- Transaction reference (if already paid)\n\nFormat: Bank Name, Account Number, Transaction Reference\nExample: Equity Bank, 1234567890, T123456789");
@@ -2489,21 +2498,43 @@ async function handleBookingStep(ctx, session, userId, text) {
             deleteMessageSilently(ctx, updatedSession.lastMessageId, 'previous prompt (previous therapy)');
           }
           
-          const msg = await ctx.reply("How would you like to pay?\n\nPlease reply with:\n• **M-Pesa**\n• **Bank**");
+          const msg = await ctx.reply("How would you like to pay?\n\nPlease reply with:\n• **M-Pesa**\n• **Card**");
           updateBookingSession(userId, 'emergency_payment', {});
           const session = getBookingSession(userId);
           session.lastMessageId = msg.message_id;
         } else if (!session.data.payment_method) {
           const paymentMethod = text.toLowerCase().trim();
-          if (!['m-pesa', 'mpesa', 'bank', 'bank transfer'].includes(paymentMethod)) {
-            return ctx.reply("Please choose one of the payment methods:\n• M-Pesa\n• Bank");
+          if (!['m-pesa', 'mpesa', 'card'].includes(paymentMethod)) {
+            return ctx.reply("Please choose one of the payment methods:\n• M-Pesa\n• Card");
           }
           
           // Normalize payment method
-          const normalizedMethod = paymentMethod.includes('mpesa') || paymentMethod.includes('m-pesa') ? 'M-Pesa' : 'Bank';
+          const normalizedMethod = paymentMethod.includes('mpesa') || paymentMethod.includes('m-pesa') ? 'M-Pesa' : 'Card';
+          
+          if (normalizedMethod === 'M-Pesa') {
+            // Ask for M-Pesa phone number
+            updateBookingSession(userId, 'mpesa_phone', { 
+              payment_method: normalizedMethod
+            });
+            const phoneMsg = await ctx.reply("📱 **M-Pesa Payment**\n\nPlease enter your M-Pesa phone number (e.g., 254712345678):\n\nYou will receive an M-Pesa prompt on this number to complete payment.");
+            const s = getBookingSession(userId);
+            s.lastMessageId = phoneMsg.message_id;
+            return;
+          } else {
+            // For Card, we'll collect details or redirect to web form
+            updateBookingSession(userId, 'confirmation', { 
+              payment_method: normalizedMethod
+            });
+          }
+        } else if (session.data.payment_method === 'M-Pesa' && !session.data.mpesa_phone_number) {
+          // Collect M-Pesa phone number
+          const phoneNumber = text.trim();
+          if (!phoneNumber || phoneNumber.length < 10) {
+            return ctx.reply("Please enter a valid phone number (e.g., 254712345678)");
+          }
           
           updateBookingSession(userId, 'confirmation', { 
-            payment_method: normalizedMethod
+            mpesa_phone_number: phoneNumber
           });
           
           // Delete user's input message and previous bot message for cleaner interface
