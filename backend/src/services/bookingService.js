@@ -754,6 +754,10 @@ export async function createWebBooking(payload) {
 
     await pool.query("COMMIT");
 
+    // Track payment initiation status
+    let paymentInitiated = false;
+    let paymentError = null;
+
     // Initiate payment based on method
     if (normalizedPaymentMethod === "M-Pesa") {
       // Use phone number from form (mpesaPhoneNumber) or fallback to contact phone
@@ -767,9 +771,15 @@ export async function createWebBooking(payload) {
             appointmentCode,
             `Payment for appointment ${appointmentCode}`
           );
+          paymentInitiated = true;
           console.log(`[Booking Service] M-Pesa STK push initiated for appointment ${appointmentCode} to ${mpesaPhone}`);
-        } catch (paymentError) {
-          console.error("[Booking Service] Error initiating M-Pesa payment:", paymentError);
+        } catch (paymentErr) {
+          paymentError = paymentErr;
+          if (paymentErr.code === "MPESA_NOT_CONFIGURED") {
+            console.warn(`[Booking Service] M-Pesa not configured - payment prompt not sent. Booking ${appointmentCode} created successfully. User can pay via Paybill ${process.env.MPESA_SHORTCODE || "522522"}.`);
+          } else {
+            console.error("[Booking Service] Error initiating M-Pesa payment:", paymentErr.message);
+          }
           // Don't fail the booking if payment initiation fails - user can pay later
         }
       } else {

@@ -59,10 +59,15 @@ function generateMpesaPassword() {
  * @returns {Promise<Object>} STK push response
  */
 export async function initiateMpesaSTKPush(phoneNumber, amount, accountReference, transactionDesc = "Payment") {
+  // Check if M-Pesa credentials are configured
+  if (!MPESA_CONSUMER_KEY || !MPESA_CONSUMER_SECRET || !MPESA_PASSKEY || !MPESA_SHORTCODE) {
+    const error = new Error("M-Pesa credentials not configured");
+    error.code = "MPESA_NOT_CONFIGURED";
+    error.details = "Please set MPESA_CONSUMER_KEY, MPESA_CONSUMER_SECRET, MPESA_PASSKEY, and MPESA_SHORTCODE environment variables in Vercel.";
+    throw error;
+  }
+
   try {
-    if (!MPESA_CONSUMER_KEY || !MPESA_CONSUMER_SECRET || !MPESA_PASSKEY || !MPESA_SHORTCODE) {
-      throw new Error("M-Pesa credentials not configured. Please set MPESA_CONSUMER_KEY, MPESA_CONSUMER_SECRET, MPESA_PASSKEY, and MPESA_SHORTCODE environment variables.");
-    }
 
     // Normalize phone number
     let normalizedPhone = phoneNumber.replace(/\D/g, "");
