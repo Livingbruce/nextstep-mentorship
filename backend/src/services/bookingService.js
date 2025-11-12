@@ -185,7 +185,6 @@ function buildValidationErrors(payload) {
     ["sessionMode", "Session mode is required"],
     ["reason", "Reason for counseling is required"],
     ["paymentMethod", "Payment method is required"],
-    ["mpesaPhoneNumber", "M-Pesa phone number is required when M-Pesa is selected"],
   ];
 
   for (const [field, message] of requiredFields) {
@@ -221,6 +220,31 @@ function buildValidationErrors(payload) {
       message:
         "You must acknowledge the confidentiality and emergency disclosure policy.",
     });
+  }
+
+  // Conditional validation based on payment method
+  if (payload.paymentMethod === "mpesa" || payload.paymentMethod === "M-Pesa") {
+    if (!payload.mpesaPhoneNumber?.trim()) {
+      errors.push({ field: "mpesaPhoneNumber", message: "M-Pesa phone number is required" });
+    }
+  }
+  
+  if (payload.paymentMethod === "card" || payload.paymentMethod === "Card") {
+    if (!payload.cardholderName?.trim()) {
+      errors.push({ field: "cardholderName", message: "Cardholder name is required for card payment" });
+    }
+    if (!payload.cardNumber?.trim()) {
+      errors.push({ field: "cardNumber", message: "Card number is required for card payment" });
+    }
+    if (!payload.expiryMonth) {
+      errors.push({ field: "expiryMonth", message: "Expiry month is required for card payment" });
+    }
+    if (!payload.expiryYear) {
+      errors.push({ field: "expiryYear", message: "Expiry year is required for card payment" });
+    }
+    if (!payload.cvv?.trim()) {
+      errors.push({ field: "cvv", message: "CVV is required for card payment" });
+    }
   }
 
   return errors;
