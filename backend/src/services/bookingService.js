@@ -21,6 +21,39 @@ const SESSION_DURATION_MAP = {
 };
 
 let intakeTableEnsured = false;
+let amountCentsColumnEnsured = false;
+
+async function ensureAmountCentsColumn() {
+  if (amountCentsColumnEnsured) {
+    return;
+  }
+
+  try {
+    // Check if column exists
+    const columnCheck = await pool.query(`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'appointments' 
+      AND column_name = 'amount_cents'
+    `);
+
+    if (columnCheck.rows.length === 0) {
+      // Column doesn't exist, add it
+      await pool.query(`
+        ALTER TABLE appointments 
+        ADD COLUMN amount_cents INTEGER DEFAULT 0 CHECK (amount_cents >= 0)
+      `);
+      console.log("[Booking Service] Added amount_cents column to appointments table");
+    }
+    
+    amountCentsColumnEnsured = true;
+  } catch (error) {
+    console.error("[Booking Service] Error ensuring amount_cents column:", error);
+    // Don't throw - allow the service to continue, but log the error
+  }
+}
+
+let intakeTableEnsured = false;
 
 async function ensureIntakeTable() {
   if (intakeTableEnsured) {
