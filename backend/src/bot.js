@@ -959,8 +959,8 @@ async function initiatePaymentProcess(ctx, appointmentId, data) {
     else if (data.session_duration.includes('60')) sessionCost = 3000; // 60 mins = $30
     else if (data.session_duration.includes('90')) sessionCost = 4000; // 90 mins = $40
     
-    // Extract phone number for payment (now we always have phone)
-    let paymentPhone = data.contact_phone;
+    // Use M-Pesa phone number if provided, otherwise use contact phone
+    let paymentPhone = data.mpesa_phone_number || data.mpesaPhoneNumber || data.contact_phone;
     
     // Clean phone number
     paymentPhone = paymentPhone.replace(/\D/g, ''); // Remove non-digits
@@ -973,8 +973,22 @@ async function initiatePaymentProcess(ctx, appointmentId, data) {
     // Send payment prompt based on method
     if (data.payment_method.toLowerCase() === 'm-pesa' || data.payment_method.toLowerCase() === 'mpesa') {
       await sendMpesaPaymentPrompt(ctx, appointmentCode, sessionCost, paymentPhone);
-    } else if (data.payment_method.toLowerCase() === 'bank' || data.payment_method.toLowerCase() === 'bank transfer') {
-      await sendBankPaymentPrompt(ctx, appointmentCode, sessionCost, paymentPhone);
+    } else if (data.payment_method.toLowerCase() === 'card') {
+      // For card payments, show account details and redirect to web
+      const { getAccountDetails } = await import("./services/paymentService.js");
+      const accountDetails = getAccountDetails();
+      await ctx.reply(
+        `💳 **Card Payment**\n\n` +
+        `Appointment ID: ${appointmentCode}\n` +
+        `Amount: KES ${sessionCost}\n\n` +
+        `Please visit our website to complete card payment:\n` +
+        `${process.env.FRONTEND_URL || 'https://your-frontend-domain.vercel.app'}/booking\n\n` +
+        `Or use our Paybill:\n` +
+        `Business Number: ${accountDetails.paybillNumber}\n` +
+        `Account Number: ${appointmentCode}\n` +
+        `Amount: ${sessionCost}\n\n` +
+        `Your appointment will be confirmed once payment is received.`
+      );
     }
     
   } catch (error) {
