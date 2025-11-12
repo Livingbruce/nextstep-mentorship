@@ -571,21 +571,30 @@ async function handleMentorshipStep(ctx, session, userId, text) {
       case 'contact_info': {
         session.data.contact_info = text.trim();
         session.step = 'payment_method';
-        return ctx.reply("Select your payment method: type 'M-Pesa' or 'Bank'.");
+        return ctx.reply("Select your payment method: type 'M-Pesa' or 'Card'.");
       }
       case 'payment_method': {
         const method = text.trim().toLowerCase();
-        if (method !== 'm-pesa' && method !== 'mpesa' && method !== 'bank') {
-          return ctx.reply("Please type 'M-Pesa' or 'Bank'");
+        if (method !== 'm-pesa' && method !== 'mpesa' && method !== 'card') {
+          return ctx.reply("Please type 'M-Pesa' or 'Card'");
         }
-        session.data.payment_method = method.startsWith('m') ? 'M-Pesa' : 'Bank';
+        session.data.payment_method = method.startsWith('m') ? 'M-Pesa' : 'Card';
         if (session.data.payment_method === 'M-Pesa') {
-          session.step = 'payment_reference';
-          return ctx.reply("Enter your M-Pesa transaction code (e.g., QXT123ABC4).");
+          session.step = 'mpesa_phone';
+          return ctx.reply("📱 **M-Pesa Payment**\n\nPlease enter your M-Pesa phone number (e.g., 254712345678):\n\nYou will receive an M-Pesa prompt on this number to complete payment.");
         } else {
           session.step = 'payment_reference';
-          return ctx.reply("Enter your bank payment details (bank name and reference number).");
+          return ctx.reply("💳 **Card Payment**\n\nFor card payments, please visit our website:\n" + (process.env.FRONTEND_URL || 'https://your-frontend-domain.vercel.app') + "/booking\n\nOr enter a payment reference if you've already paid.");
         }
+      }
+      case 'mpesa_phone': {
+        const phoneNumber = text.trim();
+        if (!phoneNumber || phoneNumber.length < 10) {
+          return ctx.reply("Please enter a valid phone number (e.g., 254712345678)");
+        }
+        session.data.mpesa_phone_number = phoneNumber;
+        session.step = 'additional_details';
+        return ctx.reply("✅ Phone number saved. Any additional details you'd like to include? If none, type 'none'.");
       }
       case 'payment_reference': {
         session.data.payment_reference = text.trim();
