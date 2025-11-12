@@ -611,7 +611,11 @@ async function handleMentorshipStep(ctx, session, userId, text) {
         confirmMsg += `Program: ${p.title} (${price})\n`;
         confirmMsg += `Name: ${session.data.applicant_name}\n`;
         confirmMsg += `Contact: ${session.data.contact_info}\n`;
-        confirmMsg += `Payment: ${session.data.payment_method} (${session.data.payment_reference})\n`;
+        if (session.data.payment_method === 'M-Pesa') {
+          confirmMsg += `Payment: ${session.data.payment_method} (Phone: ${session.data.mpesa_phone_number || session.data.payment_reference || 'N/A'})\n`;
+        } else {
+          confirmMsg += `Payment: ${session.data.payment_method} (${session.data.payment_reference || 'N/A'})\n`;
+        }
         if (session.data.additional_details) confirmMsg += `Details: ${session.data.additional_details}\n`;
         confirmMsg += "\nType 'yes' to submit or 'no' to cancel.";
         session.step = 'confirm_submit';
