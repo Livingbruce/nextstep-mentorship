@@ -859,6 +859,11 @@ export async function createWebBooking(payload) {
       counselor: counselor.name,
       appointmentDate: preferredDate.toISOString(),
       sessionDurationMinutes: durationMinutes,
+      paymentInitiated,
+      paymentMethod: normalizedPaymentMethod,
+      ...(paymentError && paymentError.code === "MPESA_NOT_CONFIGURED" && {
+        paymentNote: `Please complete payment via M-Pesa Paybill ${process.env.MPESA_SHORTCODE || "522522"} using account number ${appointment.appointment_code}`
+      }),
     };
   } catch (error) {
     await pool.query("ROLLBACK");
