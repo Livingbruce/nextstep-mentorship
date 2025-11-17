@@ -93,7 +93,7 @@ CREATE TABLE IF NOT EXISTS appointments (
   end_date TIMESTAMP WITH TIME ZONE NOT NULL,
   session_type VARCHAR(50) DEFAULT 'in-person' CHECK (session_type IN ('in-person', 'online (video)', 'phone')),
   session_duration VARCHAR(20) DEFAULT '60 mins' CHECK (session_duration IN ('45 mins', '60 mins', '90 mins')),
-  payment_method VARCHAR(50) CHECK (payment_method IN ('M-Pesa', 'Card', 'Cash', 'Insurance')),
+  payment_method VARCHAR(50) CHECK (payment_method IN ('M-Pesa', 'Bank Transfer', 'Cash', 'Insurance')),
   payment_status VARCHAR(20) DEFAULT 'pending' CHECK (payment_status IN ('pending', 'paid', 'failed', 'refunded')),
   amount_cents INTEGER DEFAULT 0 CHECK (amount_cents >= 0),
   status VARCHAR(20) DEFAULT 'pending_payment' CHECK (status IN ('pending_payment', 'confirmed', 'canceled', 'completed', 'no_show')),

@@ -24,8 +24,8 @@ const sessionDurations = [
 const issueDurations = ["Days", "Weeks", "Months", "Years", "Uncertain"];
 
 const paymentMethods = [
-  { value: "mpesa", label: "M-Pesa" },
-  { value: "card", label: "Card Payment" },
+  { value: "mpesa", label: "M-Pesa (STK Push)" },
+  { value: "bank", label: "Bank Transfer" },
 ];
 
 const initialFormState = {
@@ -55,13 +55,8 @@ const initialFormState = {
   consentReminders: true,
   paymentMethod: "mpesa",
   mpesaPhoneNumber: "", // Phone number for M-Pesa STK push
+  transactionReference: "",
   paymentConfirmation: false,
-  // Card payment fields
-  cardholderName: "",
-  cardNumber: "",
-  expiryMonth: "",
-  expiryYear: "",
-  cvv: "",
 };
 
 const buildValidation = (data) => {
@@ -85,12 +80,8 @@ const buildValidation = (data) => {
   if (data.paymentMethod === "mpesa" && !data.mpesaPhoneNumber?.trim()) {
     errors.mpesaPhoneNumber = "M-Pesa phone number is required.";
   }
-  if (data.paymentMethod === "card") {
-    if (!data.cardholderName?.trim()) errors.cardholderName = "Cardholder name is required.";
-    if (!data.cardNumber?.trim()) errors.cardNumber = "Card number is required.";
-    if (!data.expiryMonth) errors.expiryMonth = "Expiry month is required.";
-    if (!data.expiryYear) errors.expiryYear = "Expiry year is required.";
-    if (!data.cvv?.trim()) errors.cvv = "CVV is required.";
+  if (data.paymentMethod === "bank" && !data.transactionReference?.trim()) {
+    errors.transactionReference = "Bank transfer reference is required.";
   }
   if (!data.consentDataCollection) errors.consentDataCollection = "Consent is required.";
   if (!data.consentConfidentiality) errors.consentConfidentiality = "Acknowledgement is required.";
@@ -105,6 +96,12 @@ const BookingForm = () => {
   const [counselors, setCounselors] = useState([]);
   const [loadingCounselors, setLoadingCounselors] = useState(true);
   const [submitState, setSubmitState] = useState({ status: "idle" });
+  const [accountDetails, setAccountDetails] = useState(null);
+  const resolvedAccountDetails = accountDetails || {
+    accountName: "Desol Nurturers",
+    accountNumber: "1343210186",
+    paybillNumber: "522522",
+  };
 
   const sanitizedBaseUrl = (API_BASE_URL || "").replace(/\/$/, "");
   const buildApiUrl = useMemo(
@@ -147,8 +144,46 @@ const BookingForm = () => {
     };
   }, [buildApiUrl]);
 
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchAccountDetails() {
+      try {
+        const response = await fetch(buildApiUrl("/api/payments/account-details"));
+        if (!response.ok) {
+          throw new Error("Failed to fetch account details");
+        }
+        const details = await response.json();
+        if (isMounted) {
+          setAccountDetails(details);
+        }
+      } catch (error) {
+        console.warn("Account details fetch failed:", error.message);
+        if (isMounted) {
+          setAccountDetails({
+            accountName: "Desol Nurturers",
+            accountNumber: "1343210186",
+            paybillNumber: "522522",
+          });
+        }
+      }
+    }
+    fetchAccountDetails();
+    return () => {
+      isMounted = false;
+    };
+  }, [buildApiUrl]);
+
   const handleChange = (event) => {
     const { name, value, type, checked } = event.target;
+    if (name === "paymentMethod") {
+      setFormData((prev) => ({
+        ...prev,
+        paymentMethod: value,
+        mpesaPhoneNumber: value === "bank" ? "" : prev.mpesaPhoneNumber,
+        transactionReference: value === "bank" ? prev.transactionReference : "",
+      }));
+      return;
+    }
     setFormData((prev) => ({
       ...prev,
       [name]: type === "checkbox" ? checked : value,
@@ -230,14 +265,7 @@ const BookingForm = () => {
       paymentMethod: formData.paymentMethod,
       mpesaPhoneNumber: formData.mpesaPhoneNumber.trim(), // Phone number for M-Pesa STK push
       paymentConfirmation: formData.paymentConfirmation,
-      // Card payment details (only if card payment selected)
-      ...(formData.paymentMethod === "card" && {
-        cardholderName: formData.cardholderName.trim(),
-        cardNumber: formData.cardNumber.replace(/\s/g, ""),
-        expiryMonth: formData.expiryMonth,
-        expiryYear: formData.expiryYear,
-        cvv: formData.cvv.trim(),
-      }),
+      transactionReference: formData.transactionReference.trim(),
     };
 
     try {
@@ -301,6 +329,9 @@ const BookingForm = () => {
               appointmentCode: result.data?.appointmentCode,
               counselor: result.data?.counselor,
               appointmentDate: result.data?.appointmentDate,
+              paymentInstructions: result.data?.paymentInstructions,
+              paymentMethod: result.data?.paymentMethod,
+              paymentNote: result.data?.paymentNote,
             },
           },
         });
@@ -803,8 +834,7 @@ const BookingForm = () => {
                   <p className="error-text">{validationErrors.paymentMethod}</p>
                 )}
                 <p className="helper-text">
-                  Fees and payment instructions will be shared in the booking
-                  confirmation.
+                  We’ll send an automatic M-Pesa prompt or you can pay manually via bank transfer.
                 </p>
               </div>
               {formData.paymentMethod === "mpesa" && (
@@ -822,91 +852,41 @@ const BookingForm = () => {
                     required
                   />
                   <p className="helper-text">
-                    You will receive an M-Pesa prompt on this number to complete payment.
+                    You will receive an M-Pesa prompt on this number to complete payment. If it fails, pay manually via Paybill {resolvedAccountDetails.paybillNumber} using your appointment code as the account number.
                   </p>
                 </div>
               )}
             </div>
-            {formData.paymentMethod === "card" ? (
-              <div className="form-grid two-column" style={{ marginTop: "1rem" }}>
+            {formData.paymentMethod === "bank" && (
+              <div className="bank-transfer-panel" style={{ marginTop: "1rem" }}>
+                <div className="bank-details" style={{ background: "var(--card-bg)", border: "1px solid var(--border-color)", borderRadius: "8px", padding: "1rem", marginBottom: "1rem" }}>
+                  <p><strong>Account Name:</strong> {resolvedAccountDetails.accountName}</p>
+                  <p><strong>Account Number:</strong> {resolvedAccountDetails.accountNumber}</p>
+                  <p><strong>Paybill:</strong> {resolvedAccountDetails.paybillNumber}</p>
+                  <p>Use your appointment code or full name as the payment reference. Share the transaction reference so we can confirm your session.</p>
+                </div>
                 <div className="form-field">
-                  <label htmlFor="cardholderName">
-                    Cardholder Name <span>(required for card payment)</span>
+                  <label htmlFor="transactionReference">
+                    Bank Payment Reference <span>(required)</span>
                   </label>
                   <input
-                    id="cardholderName"
-                    name="cardholderName"
+                    id="transactionReference"
+                    name="transactionReference"
                     type="text"
-                    placeholder="John Doe"
-                    value={formData.cardholderName}
+                    placeholder="e.g., EFT/MPESA reference"
+                    value={formData.transactionReference}
                     onChange={handleChange}
-                    required={formData.paymentMethod === "card"}
+                    required={formData.paymentMethod === "bank"}
                   />
-                </div>
-                <div className="form-field">
-                  <label htmlFor="cardNumber">
-                    Card Number <span>(required for card payment)</span>
-                  </label>
-                  <input
-                    id="cardNumber"
-                    name="cardNumber"
-                    type="text"
-                    placeholder="1234 5678 9012 3456"
-                    value={formData.cardNumber}
-                    onChange={handleChange}
-                    maxLength="19"
-                    required={formData.paymentMethod === "card"}
-                  />
-                </div>
-                <div className="form-field">
-                  <label htmlFor="expiryMonth">Expiry Month</label>
-                  <select
-                    id="expiryMonth"
-                    name="expiryMonth"
-                    value={formData.expiryMonth}
-                    onChange={handleChange}
-                    required={formData.paymentMethod === "card"}
-                  >
-                    <option value="">MM</option>
-                    {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => (
-                      <option key={month} value={String(month).padStart(2, "0")}>
-                        {String(month).padStart(2, "0")}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="form-field">
-                  <label htmlFor="expiryYear">Expiry Year</label>
-                  <select
-                    id="expiryYear"
-                    name="expiryYear"
-                    value={formData.expiryYear}
-                    onChange={handleChange}
-                    required={formData.paymentMethod === "card"}
-                  >
-                    <option value="">YYYY</option>
-                    {Array.from({ length: 10 }, (_, i) => new Date().getFullYear() + i).map((year) => (
-                      <option key={year} value={String(year)}>
-                        {year}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="form-field">
-                  <label htmlFor="cvv">CVV/CVC</label>
-                  <input
-                    id="cvv"
-                    name="cvv"
-                    type="text"
-                    placeholder="123"
-                    value={formData.cvv}
-                    onChange={handleChange}
-                    maxLength="4"
-                    required={formData.paymentMethod === "card"}
-                  />
+                  {validationErrors.transactionReference && (
+                    <p className="error-text">{validationErrors.transactionReference}</p>
+                  )}
+                  <p className="helper-text">
+                    Enter the bank/EFT reference or type "Pending" if you will send it later.
+                  </p>
                 </div>
               </div>
-            ) : null}
+            )}
             <div className="checkbox-group" style={{ marginTop: "1.5rem" }}>
               <div className="checkbox-item">
                 <input

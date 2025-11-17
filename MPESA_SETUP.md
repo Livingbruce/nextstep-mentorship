@@ -6,7 +6,7 @@ This guide explains how to configure M-Pesa STK Push payments for the NextStep M
 ## Prerequisites
 - M-Pesa Daraja API account (Safaricom Developer Portal)
 - Production or Sandbox credentials
-- Paybill number: **522522** (Desol Nurturers Limited)
+- Paybill number: **522522** (Desol Nurturers)
 
 ## Environment Variables Required
 

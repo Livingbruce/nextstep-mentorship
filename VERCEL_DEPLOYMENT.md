@@ -32,14 +32,13 @@ MPESA_SHORTCODE=522522
 MPESA_BASE_URL=https://api.safaricom.co.ke
 MPESA_CALLBACK_URL=https://nextestep-mentorship.vercel.app/api/payments/mpesa/callback
 
-# Payment Gateway (Choose: Pesapal, Flutterwave, or Stripe)
-PAYMENT_GATEWAY_API_KEY=your_gateway_api_key
-PAYMENT_GATEWAY_API_SECRET=your_gateway_api_secret
-PAYMENT_GATEWAY_BASE_URL=https://api.pesapal.com
-
 # Update existing URLs (verify these are correct)
 API_URL=https://nextestep-mentorship.vercel.app
 FRONTEND_URL=https://your-frontend-domain.vercel.app
+
+# Optional overrides for manual bank instructions
+BANK_ACCOUNT_NAME=Desol Nurturers
+BANK_ACCOUNT_NUMBER=1343210186
 ```
 
 **Important Notes:**
@@ -62,7 +61,7 @@ curl https://nextestep-mentorship.vercel.app/api/payments/account-details
 Expected response for account details:
 ```json
 {
-  "accountName": "Desol Nurturers Limited",
+  "accountName": "Desol Nurturers",
   "accountNumber": "1343210186",
   "paybillNumber": "522522"
 }
@@ -78,12 +77,6 @@ Expected response for account details:
    https://nextestep-mentorship.vercel.app/api/payments/mpesa/callback
    ```
 
-#### Payment Gateway Webhook:
-1. Log in to your payment gateway dashboard
-2. Add webhook URL:
-   ```
-   https://nextestep-mentorship.vercel.app/api/payments/card/callback
-   ```
 
 ### 5. Test Deployment
 
@@ -95,13 +88,13 @@ Expected response for account details:
 5. Complete payment
 6. Check if appointment auto-confirms
 
-#### Test Card Payment:
+#### Test Bank Transfer Flow:
 1. Visit your booking form
-2. Select "Card" payment
-3. Enter card details
-4. Verify redirect to payment gateway
-5. Complete payment
-6. Check if appointment auto-confirms
+2. Select "Bank Transfer"
+3. Confirm that account details display correctly
+4. Enter a test reference (e.g., `BANKTEST123`)
+5. Submit the booking and verify the reference appears in the admin dashboard
+6. Manually mark the payment as confirmed to complete the flow
 
 ## 📋 Deployment Checklist
 
@@ -112,7 +105,6 @@ Expected response for account details:
 - [ ] Health endpoint working
 - [ ] Payment endpoints accessible
 - [ ] M-Pesa webhook configured
-- [ ] Payment gateway webhook configured
 - [ ] Test payments successful
 
 ## 🔍 Troubleshooting

@@ -6,6 +6,7 @@ import pool from "./db/pool.js";
 import cron from "node-cron";
 import { workingHoursValidator } from "./utils/workingHoursValidator.js";
 import { generateUniqueAppointmentCode } from "./utils/appointmentCodeGenerator.js";
+import { getManualPaymentGuide } from "./services/paymentService.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -105,6 +106,27 @@ const getStorePageUrl = () => {
   }
 
   return "https://nextestep-mentorship.vercel.app/store";
+};
+
+const defaultPaymentGuide = getManualPaymentGuide();
+
+const buildBankTransferMessage = (referenceHint = "your booking code") => {
+  const { bank } = getManualPaymentGuide(referenceHint);
+  return `🏦 **Bank Transfer Instructions**\n\n` +
+    `Account Name: ${bank.accountName}\n` +
+    `Account Number: ${bank.accountNumber}\n` +
+    `Reference: ${referenceHint}\n\n` +
+    `${bank.note}\n\n` +
+    `Once you've sent the funds, reply with the transaction reference so we can verify and confirm your session.`;
+};
+
+const buildMpesaManualMessage = (referenceHint = "your booking code") => {
+  const { mpesa } = getManualPaymentGuide(referenceHint);
+  return `📱 **M-Pesa Paybill Instructions**\n\n` +
+    `Business Number: ${mpesa.paybill}\n` +
+    `Account Number: ${referenceHint}\n\n` +
+    `${mpesa.note}\n\n` +
+    `If you already paid, reply with the M-Pesa confirmation code.`;
 };
 
 pool.query("SELECT 1")
@@ -571,20 +593,20 @@ async function handleMentorshipStep(ctx, session, userId, text) {
       case 'contact_info': {
         session.data.contact_info = text.trim();
         session.step = 'payment_method';
-        return ctx.reply("Select your payment method: type 'M-Pesa' or 'Card'.");
+        return ctx.reply("Select your payment method: type 'M-Pesa' or 'Bank'.");
       }
       case 'payment_method': {
         const method = text.trim().toLowerCase();
-        if (method !== 'm-pesa' && method !== 'mpesa' && method !== 'card') {
-          return ctx.reply("Please type 'M-Pesa' or 'Card'");
+        if (!['m-pesa', 'mpesa', 'bank', 'bank transfer'].includes(method)) {
+          return ctx.reply("Please type 'M-Pesa' or 'Bank'");
         }
-        session.data.payment_method = method.startsWith('m') ? 'M-Pesa' : 'Card';
+        session.data.payment_method = method.startsWith('m') ? 'M-Pesa' : 'Bank Transfer';
         if (session.data.payment_method === 'M-Pesa') {
           session.step = 'mpesa_phone';
           return ctx.reply("📱 **M-Pesa Payment**\n\nPlease enter your M-Pesa phone number (e.g., 254712345678):\n\nYou will receive an M-Pesa prompt on this number to complete payment.");
         } else {
           session.step = 'payment_reference';
-          return ctx.reply("💳 **Card Payment**\n\nFor card payments, please visit our website:\n" + (process.env.FRONTEND_URL || 'https://your-frontend-domain.vercel.app') + "/booking\n\nOr enter a payment reference if you've already paid.");
+          return ctx.reply(buildBankTransferMessage("your full name or application ID"));
         }
       }
       case 'mpesa_phone': {
@@ -611,11 +633,7 @@ async function handleMentorshipStep(ctx, session, userId, text) {
         confirmMsg += `Program: ${p.title} (${price})\n`;
         confirmMsg += `Name: ${session.data.applicant_name}\n`;
         confirmMsg += `Contact: ${session.data.contact_info}\n`;
-        if (session.data.payment_method === 'M-Pesa') {
-          confirmMsg += `Payment: ${session.data.payment_method} (Phone: ${session.data.mpesa_phone_number || session.data.payment_reference || 'N/A'})\n`;
-        } else {
-          confirmMsg += `Payment: ${session.data.payment_method} (${session.data.payment_reference || 'N/A'})\n`;
-        }
+        confirmMsg += `Payment: ${session.data.payment_method} (${session.data.payment_method === 'M-Pesa' ? (session.data.mpesa_phone_number || session.data.payment_reference || 'N/A') : (session.data.payment_reference || 'Pending reference')})\n`;
         if (session.data.additional_details) confirmMsg += `Details: ${session.data.additional_details}\n`;
         confirmMsg += "\nType 'yes' to submit or 'no' to cancel.";
         session.step = 'confirm_submit';
@@ -755,31 +773,27 @@ async function handleBookOrderStep(ctx, session, userId, text) {
       
       case 'payment_method': {
         const paymentMethod = text.trim().toLowerCase();
-        if (!['m-pesa', 'mpesa', 'card'].includes(paymentMethod)) {
-          return ctx.reply("Please choose either 'M-Pesa' or 'Card' as your payment method.");
+        if (!['m-pesa', 'mpesa', 'bank', 'bank transfer'].includes(paymentMethod)) {
+          return ctx.reply("Please choose either 'M-Pesa' or 'Bank' as your payment method.");
         }
         
-        session.data.paymentMethod = paymentMethod.includes('mpesa') ? 'M-Pesa' : 'Card';
+        session.data.paymentMethod = paymentMethod.includes('mpesa') ? 'M-Pesa' : 'Bank Transfer';
         
-        if (paymentMethod.includes('mpesa')) {
-          // Ask for M-Pesa phone number
+        if (session.data.paymentMethod === 'M-Pesa') {
           session.step = 'mpesa_phone';
           return ctx.reply("📱 **M-Pesa Payment**\n\nPlease enter your M-Pesa phone number (e.g., 254712345678):\n\nYou will receive an M-Pesa prompt on this number to complete payment.");
-        } else {
-          // For Card, redirect to web form or collect details
-          session.step = 'payment_details';
-          return ctx.reply("💳 **Card Payment**\n\nFor card payments, please visit our website to complete your booking:\n" + (process.env.FRONTEND_URL || 'https://your-frontend-domain.vercel.app') + "/booking\n\nOr reply with 'back' to choose M-Pesa instead.");
         }
         
-        if (false) { // This block is now unreachable but kept for reference
-          return ctx.reply("10. M-Pesa Payment Details:\nPlease provide:\n- Phone number used for M-Pesa\n- Transaction reference (if already paid)\n\nFormat: Phone Number, Transaction Reference\nExample: 254712345678, QXY123456789");
-        } else {
-          return ctx.reply("10. Bank Transfer Details:\nPlease provide:\n- Bank name\n- Account number\n- Transaction reference (if already paid)\n\nFormat: Bank Name, Account Number, Transaction Reference\nExample: Equity Bank, 1234567890, T123456789");
-        }
+        session.step = 'payment_details';
+        return ctx.reply(buildBankTransferMessage("your order reference or phone number"));
       }
       
       case 'payment_details': {
-        session.data.paymentDetails = text.trim();
+        const reference = text.trim();
+        if (!reference) {
+          return ctx.reply("Please share the bank transfer reference or type 'pending' if you will pay later.");
+        }
+        session.data.paymentDetails = reference.toLowerCase() === 'pending' ? 'Pending verification' : reference;
         session.step = 'confirm_order';
         
         const book = session.data.selectedBook;
@@ -798,8 +812,12 @@ async function handleBookOrderStep(ctx, session, userId, text) {
         confirmMsg += `📍 Address: ${session.data.address}, ${session.data.city}, ${session.data.country}\n`;
         if (session.data.county) confirmMsg += `🏘️ County: ${session.data.county}\n`;
         if (session.data.postalCode) confirmMsg += `📮 Postal Code: ${session.data.postalCode}\n`;
-        confirmMsg += `💳 Payment: ${session.data.paymentMethod}\n`;
-        confirmMsg += `📝 Details: ${session.data.paymentDetails}\n\n`;
+        if (session.data.paymentMethod === 'M-Pesa') {
+          confirmMsg += `💳 Payment: M-Pesa (Phone: ${session.data.mpesa_phone_number || 'Pending number'})\n`;
+        } else {
+          confirmMsg += `🏦 Payment: Bank Transfer\n`;
+          confirmMsg += `📝 Reference: ${session.data.paymentDetails || 'Pending reference'}\n`;
+        }
         confirmMsg += `Type 'confirm' to place this order, or 'cancel' to abort.`;
         
         return ctx.reply(confirmMsg);
@@ -986,22 +1004,8 @@ async function initiatePaymentProcess(ctx, appointmentId, data) {
     // Send payment prompt based on method
     if (data.payment_method.toLowerCase() === 'm-pesa' || data.payment_method.toLowerCase() === 'mpesa') {
       await sendMpesaPaymentPrompt(ctx, appointmentCode, sessionCost, paymentPhone);
-    } else if (data.payment_method.toLowerCase() === 'card') {
-      // For card payments, show account details and redirect to web
-      const { getAccountDetails } = await import("./services/paymentService.js");
-      const accountDetails = getAccountDetails();
-      await ctx.reply(
-        `💳 **Card Payment**\n\n` +
-        `Appointment ID: ${appointmentCode}\n` +
-        `Amount: KES ${sessionCost}\n\n` +
-        `Please visit our website to complete card payment:\n` +
-        `${process.env.FRONTEND_URL || 'https://your-frontend-domain.vercel.app'}/booking\n\n` +
-        `Or use our Paybill:\n` +
-        `Business Number: ${accountDetails.paybillNumber}\n` +
-        `Account Number: ${appointmentCode}\n` +
-        `Amount: ${sessionCost}\n\n` +
-        `Your appointment will be confirmed once payment is received.`
-      );
+    } else if (data.payment_method.toLowerCase() === 'bank' || data.payment_method.toLowerCase() === 'bank transfer') {
+      await ctx.reply(buildBankTransferMessage(appointmentCode));
     }
     
   } catch (error) {
@@ -1053,31 +1057,15 @@ async function sendMpesaPaymentPrompt(ctx, appointmentCode, amount, phoneNumber)
   }
 }
 
-// Bank/Card payment prompt
+// Bank/M-Pesa manual payment prompt
 async function sendBankPaymentPrompt(ctx, appointmentCode, amount, phoneNumber) {
-  const { getAccountDetails } = await import("./services/paymentService.js");
-  const accountDetails = getAccountDetails();
-  
-  const message = `🏦 **Bank/Card Payment**\n\n` +
-                 `Appointment ID: ${appointmentCode}\n` +
-                 `Amount: KES ${amount}\n\n` +
-                 `📱 **Payment Options:**\n\n` +
-                 `**Option 1: M-Pesa Paybill**\n` +
-                 `1. Go to M-Pesa menu\n` +
-                 `2. Select "Pay Bill"\n` +
-                 `3. Enter Business Number: ${accountDetails.paybillNumber}\n` +
-                 `4. Enter Account Number: ${appointmentCode}\n` +
-                 `5. Enter Amount: ${amount}\n` +
-                 `6. Enter your PIN and confirm\n\n` +
-                 `**Option 2: Bank Transfer**\n` +
-                 `1. Transfer KES ${amount} to:\n` +
-                 `   Account Name: ${accountDetails.accountName}\n` +
-                 `   Account Number: ${accountDetails.accountNumber}\n` +
-                 `   Reference: ${appointmentCode}\n\n` +
-                 `**Option 3: Card Payment**\n` +
-                 `Visit our website to pay with Visa or local Kenya cards.\n\n` +
-                 `After payment, your appointment will be confirmed automatically.`;
-  
+  const mpesaMessage = buildMpesaManualMessage(appointmentCode);
+  const bankMessage = buildBankTransferMessage(appointmentCode);
+  const message = `🏦 **Manual Payment Instructions**\n\n` +
+    `Appointment ID: ${appointmentCode}\n` +
+    `Amount Due: KES ${amount}\n\n` +
+    `${mpesaMessage}\n\n${bankMessage}\n\n` +
+    `After payment, reply with the confirmation message so we can verify and confirm your appointment.`;
   await ctx.reply(message);
 }
 
@@ -1201,7 +1189,8 @@ function formatBookingSummary(data) {
          `🚨 **Emergency Contact:**\n` +
          `   Name: ${data.emergency_contact_name}\n` +
          `   Phone: ${data.emergency_contact_phone}\n\n` +
-         `💳 **Payment Method:** ${data.payment_method}\n\n` +
+         `💳 **Payment Method:** ${data.payment_method}\n` +
+         `${data.payment_method === 'Bank Transfer' && data.transaction_reference ? `   Reference: ${data.transaction_reference}\n\n` : '\n'}` +
          `Is this information correct? Type 'yes' to confirm and proceed to payment, or 'no' to start over.`;
 }
 
@@ -2525,18 +2514,18 @@ async function handleBookingStep(ctx, session, userId, text) {
             deleteMessageSilently(ctx, updatedSession.lastMessageId, 'previous prompt (previous therapy)');
           }
           
-          const msg = await ctx.reply("How would you like to pay?\n\nPlease reply with:\n• **M-Pesa**\n• **Card**");
+          const msg = await ctx.reply("How would you like to pay?\n\nPlease reply with:\n• **M-Pesa**\n• **Bank**");
           updateBookingSession(userId, 'emergency_payment', {});
           const session = getBookingSession(userId);
           session.lastMessageId = msg.message_id;
         } else if (!session.data.payment_method) {
           const paymentMethod = text.toLowerCase().trim();
-          if (!['m-pesa', 'mpesa', 'card'].includes(paymentMethod)) {
-            return ctx.reply("Please choose one of the payment methods:\n• M-Pesa\n• Card");
+          if (!['m-pesa', 'mpesa', 'bank', 'bank transfer'].includes(paymentMethod)) {
+            return ctx.reply("Please choose one of the payment methods:\n• M-Pesa\n• Bank");
           }
           
           // Normalize payment method
-          const normalizedMethod = paymentMethod.includes('mpesa') || paymentMethod.includes('m-pesa') ? 'M-Pesa' : 'Card';
+          const normalizedMethod = paymentMethod.includes('mpesa') || paymentMethod.includes('m-pesa') ? 'M-Pesa' : 'Bank Transfer';
           
           if (normalizedMethod === 'M-Pesa') {
             // Ask for M-Pesa phone number
@@ -2548,10 +2537,13 @@ async function handleBookingStep(ctx, session, userId, text) {
             s.lastMessageId = phoneMsg.message_id;
             return;
           } else {
-            // For Card, we'll collect details or redirect to web form
-            updateBookingSession(userId, 'confirmation', { 
+            updateBookingSession(userId, 'bank_reference', { 
               payment_method: normalizedMethod
             });
+            const bankMsg = await ctx.reply(buildBankTransferMessage("your booking name or code"));
+            const s = getBookingSession(userId);
+            s.lastMessageId = bankMsg.message_id;
+            return;
           }
         } else if (session.data.payment_method === 'M-Pesa' && !session.data.mpesa_phone_number) {
           // Collect M-Pesa phone number
@@ -2576,6 +2568,26 @@ async function handleBookingStep(ctx, session, userId, text) {
           const session = getBookingSession(userId);
           session.lastMessageId = msg.message_id;
         }
+        break;
+
+      case 'bank_reference':
+        const referenceInput = text.trim();
+        if (!referenceInput) {
+          return ctx.reply("Please share the bank transfer reference or type 'pending' if you will pay later.");
+        }
+        const referenceValue = referenceInput.toLowerCase() === 'pending' ? 'Pending verification' : referenceInput;
+        updateBookingSession(userId, 'confirmation', { transaction_reference: referenceValue });
+
+        deleteMessageSilently(ctx, ctx.message.message_id, 'user reply (bank reference)');
+        const updatedBankSession = getBookingSession(userId);
+        if (updatedBankSession.lastMessageId) {
+          deleteMessageSilently(ctx, updatedBankSession.lastMessageId, 'previous prompt (bank reference)');
+        }
+
+        const confirmationMsg = await ctx.reply("✅ **Step 5 of 6: Confirmation & Consent**\n\nPlease review your details:\n\n" + formatBookingSummary(getBookingSession(userId).data) + "\n\nDo you confirm that everything is correct and you agree to our privacy policy?\n\nType 'yes' to confirm and proceed to payment, or 'no' to start over.");
+        updateBookingSession(userId, 'confirmation', {});
+        const confirmationSession = getBookingSession(userId);
+        confirmationSession.lastMessageId = confirmationMsg.message_id;
         break;
         
       case 'confirmation':

@@ -2,6 +2,7 @@ import pool from "../db/pool.js";
 import { workingHoursValidator } from "../utils/workingHoursValidator.js";
 import { generateUniqueAppointmentCode } from "../utils/appointmentCodeGenerator.js";
 import emailService from "./emailService.js";
+import { getManualPaymentGuide } from "./paymentService.js";
 
 const DEFAULT_SESSION_DURATION_MINUTES = 60;
 
@@ -119,18 +120,12 @@ function normalizePaymentMethod(method) {
   const normalized = String(method).trim().toLowerCase();
   
   // Map frontend values to database-expected values
-  // Database constraint allows: 'M-Pesa', 'Card', 'Cash', 'Insurance'
-  // Note: 'Bank' or 'Bank Transfer' should be mapped to 'Card' per constraint
+  // Database constraint allows: 'M-Pesa', 'Bank Transfer', 'Cash', 'Insurance'
   if (normalized === 'mpesa' || normalized === 'm-pesa') {
     return 'M-Pesa';
   }
   if (normalized === 'bank' || normalized === 'bank transfer') {
-    // Map bank transfer to Card (database constraint doesn't allow 'Bank Transfer')
-    // TODO: Update database constraint to allow 'Bank Transfer' or 'Bank'
-    return 'Card';
-  }
-  if (normalized === 'card' || normalized === 'card payment') {
-    return 'Card';
+    return 'Bank Transfer';
   }
   if (normalized === 'cash') {
     return 'Cash';
@@ -259,22 +254,9 @@ function buildValidationErrors(payload) {
       errors.push({ field: "mpesaPhoneNumber", message: "M-Pesa phone number is required" });
     }
   }
-  
-  if (payload.paymentMethod === "card" || payload.paymentMethod === "Card") {
-    if (!payload.cardholderName?.trim()) {
-      errors.push({ field: "cardholderName", message: "Cardholder name is required for card payment" });
-    }
-    if (!payload.cardNumber?.trim()) {
-      errors.push({ field: "cardNumber", message: "Card number is required for card payment" });
-    }
-    if (!payload.expiryMonth) {
-      errors.push({ field: "expiryMonth", message: "Expiry month is required for card payment" });
-    }
-    if (!payload.expiryYear) {
-      errors.push({ field: "expiryYear", message: "Expiry year is required for card payment" });
-    }
-    if (!payload.cvv?.trim()) {
-      errors.push({ field: "cvv", message: "CVV is required for card payment" });
+  if (payload.paymentMethod === "bank" || payload.paymentMethod === "Bank Transfer") {
+    if (!payload.transactionReference?.trim()) {
+      errors.push({ field: "transactionReference", message: "Bank transfer reference is required" });
     }
   }
 
@@ -676,6 +658,15 @@ export async function createWebBooking(payload) {
 
     const appointment = appointmentInsert.rows[0];
 
+    const intakeAdditionalData = {
+      counselorPreference: counselor.name,
+      submittedFrom: 'web-form',
+    };
+
+    if (normalizedPaymentMethod === 'Bank Transfer') {
+      intakeAdditionalData.bankPaymentReference = payload.transactionReference?.trim() || null;
+    }
+
     await pool.query(
       `INSERT INTO client_intake_forms (
         appointment_id,
@@ -733,22 +724,10 @@ export async function createWebBooking(payload) {
         Boolean(payload.consentConfidentiality),
         consentReminders,
         normalizedPaymentMethod,
-        payload.transactionReference || null,
+        payload.transactionReference?.trim() || null,
         Boolean(payload.paymentConfirmation),
         consentTimestamp.toISOString(),
-        JSON.stringify({
-          counselorPreference: counselor.name,
-          submittedFrom: 'web-form',
-          // Store card payment details if provided (encrypted/hashed in production)
-          ...(payload.paymentMethod === 'card' && payload.cardNumber && {
-            cardPaymentDetails: {
-              cardholderName: payload.cardholderName,
-              cardLast4: payload.cardNumber.slice(-4),
-              expiryMonth: payload.expiryMonth,
-              expiryYear: payload.expiryYear,
-            },
-          }),
-        }),
+        JSON.stringify(intakeAdditionalData),
       ]
     );
 
@@ -784,38 +763,6 @@ export async function createWebBooking(payload) {
         }
       } else {
         console.warn("[Booking Service] M-Pesa selected but no phone number provided");
-      }
-    } else if (normalizedPaymentMethod === "Card" && payload.cardNumber) {
-      try {
-        const { processCardPayment } = await import("./paymentService.js");
-        const cardResult = await processCardPayment(
-          {
-            cardholderName: payload.cardholderName,
-            cardNumber: payload.cardNumber,
-            expiryMonth: payload.expiryMonth,
-            expiryYear: payload.expiryYear,
-            cvv: payload.cvv,
-          },
-          sessionCost,
-          appointmentCode,
-          payload.email,
-          phone
-        );
-        console.log(`[Booking Service] Card payment initiated for appointment ${appointmentCode}`);
-        // Return redirect URL if needed
-        if (cardResult.redirectUrl) {
-          return {
-            appointmentId: appointment.id,
-            appointmentCode: appointment.appointment_code,
-            counselor: counselor.name,
-            appointmentDate: preferredDate.toISOString(),
-            sessionDurationMinutes: durationMinutes,
-            paymentRedirectUrl: cardResult.redirectUrl,
-          };
-        }
-      } catch (paymentError) {
-        console.error("[Booking Service] Error initiating card payment:", paymentError);
-        // Don't fail the booking if payment initiation fails - user can pay later
       }
     }
 
@@ -853,6 +800,19 @@ export async function createWebBooking(payload) {
       // Don't throw - email failures shouldn't break booking
     });
 
+    const manualPaymentGuide = getManualPaymentGuide(appointment.appointment_code);
+    const selectedPaymentGuide = normalizedPaymentMethod === "M-Pesa"
+      ? manualPaymentGuide.mpesa
+      : manualPaymentGuide.bank;
+
+    let paymentNote = null;
+    if (normalizedPaymentMethod === "Bank Transfer") {
+      paymentNote = `Send the session fee to ${selectedPaymentGuide.accountName} (${selectedPaymentGuide.accountNumber}) and share the reference ${payload.transactionReference?.trim() || appointment.appointment_code} with our team for verification.`;
+    }
+    if (paymentError && paymentError.code === "MPESA_NOT_CONFIGURED") {
+      paymentNote = `M-Pesa prompt could not be sent. Pay via M-Pesa Paybill ${selectedPaymentGuide.paybill || process.env.MPESA_SHORTCODE || "522522"} using account number ${appointment.appointment_code}.`;
+    }
+
     return {
       appointmentId: appointment.id,
       appointmentCode: appointment.appointment_code,
@@ -861,9 +821,9 @@ export async function createWebBooking(payload) {
       sessionDurationMinutes: durationMinutes,
       paymentInitiated,
       paymentMethod: normalizedPaymentMethod,
-      ...(paymentError && paymentError.code === "MPESA_NOT_CONFIGURED" && {
-        paymentNote: `Please complete payment via M-Pesa Paybill ${process.env.MPESA_SHORTCODE || "522522"} using account number ${appointment.appointment_code}`
-      }),
+      paymentInstructions: selectedPaymentGuide,
+      manualPaymentGuide,
+      ...(paymentNote && { paymentNote }),
     };
   } catch (error) {
     await pool.query("ROLLBACK");

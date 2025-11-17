@@ -284,7 +284,7 @@ router.post("/store/books/:id/purchase", async (req, res) => {
     if (payment_method === 'mpesa') {
       normalizedPaymentMethod = 'M-Pesa';
     } else if (payment_method === 'bank') {
-      normalizedPaymentMethod = 'Card'; // Bank transfers map to Card in database
+      normalizedPaymentMethod = 'Bank Transfer';
     }
 
     const totalAmount = book.price_cents; // shipping not handled here; can be set later

@@ -6,6 +6,13 @@ const BookingConfirmation = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const bookingData = location.state?.bookingData;
+  const paymentInstructions = bookingData?.paymentInstructions;
+  const paymentMethodLabel = bookingData?.paymentMethod || "Payment";
+  const instructionSteps = Array.isArray(paymentInstructions?.steps)
+    ? paymentInstructions.steps
+    : Array.isArray(paymentInstructions?.instructions)
+      ? paymentInstructions.instructions
+      : [];
 
   useEffect(() => {
     // If no booking data, redirect back to booking form
@@ -87,6 +94,56 @@ const BookingConfirmation = () => {
               <li>You will receive reminders 1 day and 1 hour before your appointment</li>
             </ul>
           </div>
+
+          {paymentInstructions && (
+            <div style={{ 
+              background: "#fff5f5", 
+              padding: "1.5rem", 
+              borderRadius: "8px", 
+              marginBottom: "2rem",
+              borderLeft: "4px solid #e53e3e",
+              boxShadow: "0 2px 4px rgba(0, 0, 0, 0.05)"
+            }}>
+              <h3 style={{ color: "#c53030", marginBottom: "0.75rem", fontSize: "1.1rem", fontWeight: "600" }}>
+                {paymentMethodLabel} Instructions
+              </h3>
+              {paymentInstructions.paybill && (
+                <p style={{ margin: "0.25rem 0", color: "#2d3748" }}>
+                  <strong>Paybill:</strong> {paymentInstructions.paybill}
+                </p>
+              )}
+              {paymentInstructions.accountReference && (
+                <p style={{ margin: "0.25rem 0", color: "#2d3748" }}>
+                  <strong>Account Reference:</strong> {paymentInstructions.accountReference}
+                </p>
+              )}
+              {paymentInstructions.accountName && (
+                <p style={{ margin: "0.25rem 0", color: "#2d3748" }}>
+                  <strong>Account Name:</strong> {paymentInstructions.accountName}
+                </p>
+              )}
+              {paymentInstructions.accountNumber && (
+                <p style={{ margin: "0.25rem 0", color: "#2d3748" }}>
+                  <strong>Account Number:</strong> {paymentInstructions.accountNumber}
+                </p>
+              )}
+              {instructionSteps.length > 0 && (
+                <ol style={{ color: "#4a5568", lineHeight: "1.8", paddingLeft: "1.25rem", marginTop: "0.75rem" }}>
+                  {instructionSteps.map((step, idx) => (
+                    <li key={idx}>{step}</li>
+                  ))}
+                </ol>
+              )}
+              {paymentInstructions.note && (
+                <p style={{ marginTop: "0.75rem", color: "#4a5568" }}>{paymentInstructions.note}</p>
+              )}
+              {bookingData.paymentNote && (
+                <p style={{ marginTop: "0.5rem", color: "#2d3748" }}>
+                  <strong>Note:</strong> {bookingData.paymentNote}
+                </p>
+              )}
+            </div>
+          )}
 
           <div style={{ 
             background: "#f0f4f8", 

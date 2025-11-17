@@ -6,7 +6,6 @@ import {
   markPaymentAsPaid,
   storePaymentTransaction,
   getAccountDetails,
-  processCardPayment,
 } from "../services/paymentService.js";
 import bot from "../bot.js";
 
@@ -131,83 +130,6 @@ router.post("/mpesa/callback", async (req, res) => {
 });
 
 /**
- * Card payment callback
- * Handles payment confirmation from card payment gateway
- */
-router.post("/card/callback", async (req, res) => {
-  try {
-    const callbackData = req.body;
-    const orderTrackingId = callbackData.OrderTrackingId || callbackData.order_tracking_id;
-    const orderStatus = callbackData.OrderStatus || callbackData.status;
-
-    if (orderStatus === "COMPLETED" || orderStatus === "completed") {
-      // Extract reference from order
-      const reference = callbackData.OrderMerchantReference || callbackData.reference;
-      const transactionId = callbackData.TransactionId || callbackData.transaction_id;
-      const amount = callbackData.Amount || callbackData.amount;
-
-      console.log(`[Card Payment] Payment successful:`, {
-        orderTrackingId,
-        reference,
-        transactionId,
-        amount,
-      });
-
-      // Determine reference type
-      const referenceType = reference?.startsWith("APT-") || reference?.startsWith("EMG-") ? "appointment" : "order";
-
-      if (reference) {
-        const paymentResult = await markPaymentAsPaid(reference, "Card", transactionId, referenceType);
-
-        if (paymentResult.success) {
-          await storePaymentTransaction({
-            reference,
-            referenceType,
-            paymentMethod: "Card",
-            amountCents: amount ? Math.round(amount * 100) : null,
-            transactionId,
-            status: "completed",
-            gatewayResponse: callbackData,
-          });
-
-          // Send notification if it's an appointment
-          if (paymentResult.type === "appointment" && paymentResult.clientId) {
-            try {
-              const clientRes = await pool.query(
-                `SELECT telegram_user_id, contact_info FROM clients WHERE id = $1`,
-                [paymentResult.clientId]
-              );
-              
-              if (clientRes.rows[0]?.telegram_user_id && bot && bot.telegram) {
-                await bot.telegram.sendMessage(
-                  clientRes.rows[0].telegram_user_id,
-                  `✅ Payment confirmed!\n\n` +
-                  `Your card payment of KES ${(amount || 0).toFixed(2)} has been processed.\n` +
-                  `Appointment: ${reference}\n` +
-                  `Transaction ID: ${transactionId}\n\n` +
-                  `Your appointment has been confirmed. You'll receive a reminder before your session.`
-                );
-              }
-            } catch (notifyErr) {
-              console.error("Error sending payment confirmation notification:", notifyErr);
-            }
-          }
-
-          // Redirect to success page
-          return res.redirect(`${process.env.FRONTEND_URL}/payment/success?reference=${reference}`);
-        }
-      }
-    }
-
-    // Redirect to failure page
-    return res.redirect(`${process.env.FRONTEND_URL}/payment/failed`);
-  } catch (error) {
-    console.error("Error processing card payment callback:", error);
-    return res.redirect(`${process.env.FRONTEND_URL}/payment/failed?error=processing`);
-  }
-});
-
-/**
  * Get account details for display
  */
 router.get("/account-details", (req, res) => {
@@ -217,32 +139,6 @@ router.get("/account-details", (req, res) => {
   } catch (error) {
     console.error("Error getting account details:", error);
     res.status(500).json({ error: "Failed to get account details" });
-  }
-});
-
-/**
- * Initiate card payment
- */
-router.post("/card/initiate", async (req, res) => {
-  try {
-    const { cardDetails, amount, reference, email, phoneNumber } = req.body;
-
-    if (!cardDetails || !amount || !reference || !email) {
-      return res.status(400).json({ error: "Missing required fields" });
-    }
-
-    const result = await processCardPayment(
-      cardDetails,
-      amount,
-      reference,
-      email,
-      phoneNumber
-    );
-
-    res.json(result);
-  } catch (error) {
-    console.error("Error initiating card payment:", error);
-    res.status(500).json({ error: error.message || "Failed to initiate card payment" });
   }
 });
 

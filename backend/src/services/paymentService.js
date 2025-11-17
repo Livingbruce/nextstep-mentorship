@@ -1,6 +1,5 @@
 import pool from "../db/pool.js";
 import fetch from "node-fetch";
-import crypto from "crypto";
 
 // M-Pesa Daraja API configuration
 const MPESA_CONSUMER_KEY = process.env.MPESA_CONSUMER_KEY?.trim();
@@ -9,15 +8,10 @@ const MPESA_PASSKEY = process.env.MPESA_PASSKEY?.trim();
 const MPESA_SHORTCODE = process.env.MPESA_SHORTCODE?.trim(); // Paybill number: 522522
 const MPESA_BASE_URL = process.env.MPESA_BASE_URL || "https://sandbox.safaricom.co.ke"; // Use production URL when ready
 
-// Payment gateway configuration (using Pesapal as example - can be switched to Flutterwave, Stripe, etc.)
-const PAYMENT_GATEWAY_API_KEY = process.env.PAYMENT_GATEWAY_API_KEY?.trim();
-const PAYMENT_GATEWAY_API_SECRET = process.env.PAYMENT_GATEWAY_API_SECRET?.trim();
-const PAYMENT_GATEWAY_BASE_URL = process.env.PAYMENT_GATEWAY_BASE_URL || "https://sandbox.pesapal.com"; // Use production URL when ready
-
 // Account details
-const ACCOUNT_NAME = "Desol Nurturers Limited";
-const ACCOUNT_NUMBER = "1343210186";
-const PAYBILL_NUMBER = "522522";
+const ACCOUNT_NAME = process.env.BANK_ACCOUNT_NAME?.trim() || "Desol Nurturers";
+const ACCOUNT_NUMBER = process.env.BANK_ACCOUNT_NUMBER?.trim() || "1343210186";
+const PAYBILL_NUMBER = process.env.MPESA_SHORTCODE?.trim() || "522522";
 
 /**
  * Generate M-Pesa access token
@@ -126,78 +120,6 @@ export async function initiateMpesaSTKPush(phoneNumber, amount, accountReference
 }
 
 /**
- * Process card payment (using Pesapal as example)
- * @param {Object} cardDetails - Card payment details
- * @param {string} cardDetails.cardholderName - Cardholder name
- * @param {string} cardDetails.cardNumber - Card number
- * @param {string} cardDetails.expiryMonth - Expiry month (MM)
- * @param {string} cardDetails.expiryYear - Expiry year (YYYY)
- * @param {string} cardDetails.cvv - CVV/CVC
- * @param {number} amount - Amount in KES
- * @param {string} reference - Order/appointment reference
- * @param {string} email - Customer email
- * @param {string} phoneNumber - Customer phone number
- * @returns {Promise<Object>} Payment response
- */
-export async function processCardPayment(cardDetails, amount, reference, email, phoneNumber) {
-  try {
-    if (!PAYMENT_GATEWAY_API_KEY || !PAYMENT_GATEWAY_API_SECRET) {
-      throw new Error("Payment gateway credentials not configured. Please set PAYMENT_GATEWAY_API_KEY and PAYMENT_GATEWAY_API_SECRET environment variables.");
-    }
-
-    // For Pesapal, we need to create an order first, then redirect to payment
-    // For direct card processing, you might use a different gateway like Flutterwave or Stripe
-    // This is a simplified example - adjust based on your chosen payment gateway
-
-    const orderData = {
-      id: reference,
-      currency: "KES",
-      amount: amount,
-      description: `Payment for ${reference}`,
-      callback_url: `${process.env.API_URL || process.env.LOCAL_API_URL}/api/payments/card/callback`,
-      cancellation_url: `${process.env.FRONTEND_URL}/payment/cancelled`,
-      notification_id: reference,
-      billing_address: {
-        email_address: email,
-        phone_number: phoneNumber,
-        country_code: "KE",
-      },
-    };
-
-    // Generate authentication token (Pesapal example)
-    const authHeader = Buffer.from(`${PAYMENT_GATEWAY_API_KEY}:${PAYMENT_GATEWAY_API_SECRET}`).toString("base64");
-
-    const response = await fetch(
-      `${PAYMENT_GATEWAY_BASE_URL}/api/Transactions/SubmitOrderRequest`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${authHeader}`,
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        body: JSON.stringify(orderData),
-      }
-    );
-
-    const data = await response.json();
-
-    if (data && data.redirect_url) {
-      return {
-        success: true,
-        redirectUrl: data.redirect_url,
-        orderTrackingId: data.order_tracking_id,
-      };
-    } else {
-      throw new Error("Failed to create payment order");
-    }
-  } catch (error) {
-    console.error("Error processing card payment:", error.message);
-    throw error;
-  }
-}
-
-/**
  * Verify M-Pesa payment status
  * @param {string} checkoutRequestID - Checkout request ID from STK push
  * @returns {Promise<Object>} Payment status
@@ -247,6 +169,42 @@ export function getAccountDetails() {
     accountName: ACCOUNT_NAME,
     accountNumber: ACCOUNT_NUMBER,
     paybillNumber: PAYBILL_NUMBER,
+  };
+}
+
+/**
+ * Build manual payment guide for clients
+ * @param {string} reference - Appointment code or order reference
+ */
+export function getManualPaymentGuide(reference = "your appointment code") {
+  const instructionsReference = reference || "your appointment code";
+  return {
+    mpesa: {
+      title: "M-Pesa Paybill",
+      paybill: PAYBILL_NUMBER,
+      accountReference: instructionsReference,
+      steps: [
+        "Open the M-Pesa app or dial *334#",
+        `Select Lipa na M-Pesa > Paybill and enter business number ${PAYBILL_NUMBER}`,
+        `Use ${instructionsReference} as the account/reference number`,
+        "Enter the amount shared in your booking confirmation",
+        "Complete the payment and keep the M-Pesa confirmation message",
+      ],
+      note: "If you receive our STK push, simply confirm on your phone. Otherwise pay manually using the instructions above.",
+    },
+    bank: {
+      title: "Bank Transfer (Manual)",
+      accountName: ACCOUNT_NAME,
+      accountNumber: ACCOUNT_NUMBER,
+      instructions: [
+        "Use your mobile banking app or visit a bank agent to send the funds",
+        `Account Name: ${ACCOUNT_NAME}`,
+        `Account Number: ${ACCOUNT_NUMBER}`,
+        `Use ${instructionsReference} or your full name as the payment reference`,
+        "Keep the transaction confirmation (screenshot or reference code) and share it with our team for verification",
+      ],
+      note: "Bank transfers are verified manually within working hours. Please send the transaction reference after payment so that we can confirm your session.",
+    },
   };
 }
 

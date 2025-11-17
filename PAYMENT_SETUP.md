@@ -3,13 +3,12 @@
 ## Overview
 
 The payment system has been integrated with real account details and supports:
-1. **M-Pesa Paybill** (522522) - Automatic STK push with auto-confirmation
-2. **Bank Transfer** - Manual payment with account details
-3. **Card Payment** - Visa and local Kenya cards via payment gateway
+1. **M-Pesa Paybill** (522522) – Automatic STK push with auto-confirmation
+2. **Bank Transfer** – Manual payment with Desol Nurturers bank account
 
 ## Account Details
 
-- **Account Name:** Desol Nurturers Limited
+- **Account Name:** Desol Nurturers
 - **Account Number:** 1343210186
 - **Paybill Number:** 522522
 
@@ -26,14 +25,13 @@ MPESA_SHORTCODE=522522
 MPESA_BASE_URL=https://api.safaricom.co.ke  # Production URL (use https://sandbox.safaricom.co.ke for testing)
 MPESA_CALLBACK_URL=https://your-domain.com/api/payments/mpesa/callback
 
-# Payment Gateway (for card payments - Pesapal, Flutterwave, or Stripe)
-PAYMENT_GATEWAY_API_KEY=your_gateway_api_key
-PAYMENT_GATEWAY_API_SECRET=your_gateway_api_secret
-PAYMENT_GATEWAY_BASE_URL=https://api.pesapal.com  # Adjust based on your gateway
-
 # Base URLs
 API_URL=https://your-backend-domain.com
 FRONTEND_URL=https://your-frontend-domain.com
+
+# Optional overrides for bank instructions
+BANK_ACCOUNT_NAME=Desol Nurturers
+BANK_ACCOUNT_NUMBER=1343210186
 ```
 
 ## Payment Flow
@@ -47,26 +45,21 @@ FRONTEND_URL=https://your-frontend-domain.com
 5. **System automatically marks appointment as paid** and confirms booking
 6. **User receives confirmation** via Telegram/Email
 
-### Bank/Card Payment Flow
+### Bank Transfer Flow
 
-1. **User selects Bank or Card** in booking form
-2. **For Bank:** System displays account details (Paybill 522522, Account Number 1343210186)
-3. **For Card:** User enters card details (cardholder name, card number, expiry, CVV)
-4. **System processes card payment** via payment gateway
-5. **User redirected to payment gateway** for 3D Secure authentication (if required)
-6. **Payment gateway sends callback** to `/api/payments/card/callback`
-7. **System automatically marks appointment as paid** and confirms booking
+1. **User selects Bank Transfer** in the booking form or Telegram bot
+2. **System shows manual payment guide** (account name, number, reference instructions)
+3. **User sends funds via mobile/online banking** and shares the transaction reference
+4. **Operations team verifies payment manually** and confirms the appointment/order
 
 ## API Endpoints
 
 ### Payment Callbacks (Webhooks)
 - `POST /api/payments/mpesa/callback` - M-Pesa payment confirmation
-- `POST /api/payments/card/callback` - Card payment confirmation
 
 ### Payment Utilities
 - `GET /api/payments/account-details` - Get account details for display
 - `GET /api/payments/verify/:reference` - Verify payment status by reference
-- `POST /api/payments/card/initiate` - Initiate card payment
 
 ## Database Schema
 
@@ -82,10 +75,11 @@ The system uses existing tables:
 2. Set `MPESA_BASE_URL=https://sandbox.safaricom.co.ke`
 3. Use test phone numbers provided by Safaricom
 
-### Card Payment Testing
-1. Use test card numbers from your payment gateway
-2. Use sandbox API credentials
-3. Test both successful and failed payment scenarios
+### Bank Transfer Testing
+1. Submit a booking using **Bank Transfer**
+2. Enter a dummy transaction reference (e.g., `TEST123`)
+3. Confirm that the reference is saved in the intake form and dashboard
+4. Mark the appointment/order as paid manually in the admin UI or via SQL
 
 ## Security Notes
 
@@ -93,12 +87,12 @@ The system uses existing tables:
 2. **Use environment variables** for all sensitive data
 3. **Enable HTTPS** for all payment callbacks
 4. **Validate webhook signatures** (implement based on your gateway)
-5. **Encrypt card details** before storing (currently only last 4 digits stored)
+5. **Do not collect card numbers** in the app—only share bank or M-Pesa instructions
 
 ## Next Steps
 
 1. **Get M-Pesa Daraja API credentials** from Safaricom Developer Portal
-2. **Choose payment gateway** (Pesapal, Flutterwave, or Stripe) and get credentials
+2. **Confirm bank account ownership** with Desol Nurturers finance team
 3. **Update environment variables** with production credentials
 4. **Test payment flows** in sandbox environment
 5. **Deploy to production** and update callback URLs
@@ -112,11 +106,10 @@ The system uses existing tables:
 - Check M-Pesa API status
 - Review error logs for specific error messages
 
-### Card Payment Not Processing
-- Verify payment gateway credentials
-- Check if gateway supports Kenya cards
-- Review callback URL configuration
-- Check payment gateway logs
+### Bank Transfer Not Verified
+- Confirm funds reached the Desol Nurturers account
+- Ask the client for the reference or screenshot
+- Update the appointment/order status manually once confirmed
 
 ### Payment Not Auto-Confirming
 - Verify webhook endpoints are accessible

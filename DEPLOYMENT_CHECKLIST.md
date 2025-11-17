@@ -7,7 +7,7 @@
 - [x] Payment routes created (`backend/src/routes/payments.js`)
 - [x] Bot updated with real account details
 - [x] Booking service integrated with payment initiation
-- [x] Frontend updated with card payment form
+- [x] Frontend updated with M-Pesa + bank payment instructions
 - [x] All files committed to git
 
 ### 2. Environment Variables Setup
@@ -22,14 +22,13 @@ MPESA_SHORTCODE=522522
 MPESA_BASE_URL=https://api.safaricom.co.ke
 MPESA_CALLBACK_URL=https://your-backend-domain.vercel.app/api/payments/mpesa/callback
 
-# Payment Gateway (Choose one: Pesapal, Flutterwave, or Stripe)
-PAYMENT_GATEWAY_API_KEY=your_gateway_api_key
-PAYMENT_GATEWAY_API_SECRET=your_gateway_api_secret
-PAYMENT_GATEWAY_BASE_URL=https://api.pesapal.com  # or your gateway URL
-
 # Base URLs
 API_URL=https://your-backend-domain.vercel.app
 FRONTEND_URL=https://your-frontend-domain.vercel.app
+
+# Optional overrides for manual bank instructions
+BANK_ACCOUNT_NAME=Desol Nurturers
+BANK_ACCOUNT_NUMBER=1343210186
 ```
 
 ### 3. Database Migration (if needed)
@@ -46,19 +45,18 @@ FRONTEND_URL=https://your-frontend-domain.vercel.app
 - [ ] Test payment failure flow
 - [ ] Verify auto-confirmation works
 
-#### Card Payment Testing:
-- [ ] Test card payment form submission
-- [ ] Verify payment gateway integration
-- [ ] Test 3D Secure flow (if applicable)
-- [ ] Test payment callback handling
-- [ ] Verify auto-confirmation works
+#### Bank Transfer Instructions:
+- [ ] Test booking submission with bank transfer
+- [ ] Confirm instructions display correct account info
+- [ ] Ensure transaction reference field is stored
+- [ ] Manually mark payment as received in admin dashboard
 
 ## Deployment Steps
 
 ### Step 1: Commit and Push Changes
 ```bash
 git add .
-git commit -m "Add payment system integration with M-Pesa and card payments"
+git commit -m "Add M-Pesa + bank transfer payment workflow"
 git push origin main
 ```
 
@@ -101,14 +99,6 @@ curl https://your-backend-domain.vercel.app/api/payments/verify/TEST-REF
 3. Set **Callback URL** to: `https://your-backend-domain.vercel.app/api/payments/mpesa/callback`
 4. Save changes
 
-### Step 6: Configure Payment Gateway Webhook
-
-1. Log in to your payment gateway dashboard (Pesapal/Flutterwave/Stripe)
-2. Navigate to webhook settings
-3. Add webhook URL: `https://your-backend-domain.vercel.app/api/payments/card/callback`
-4. Enable events: Payment completed, Payment failed
-5. Save changes
-
 ## Post-Deployment Verification
 
 ### 1. Test M-Pesa Payment Flow
@@ -118,21 +108,14 @@ curl https://your-backend-domain.vercel.app/api/payments/verify/TEST-REF
 - [ ] Verify appointment is auto-confirmed
 - [ ] Check Telegram/Email notification received
 
-### 2. Test Card Payment Flow
-- [ ] Create a test booking with card payment
-- [ ] Enter test card details
-- [ ] Complete payment flow
-- [ ] Verify appointment is auto-confirmed
-- [ ] Check Telegram/Email notification received
-
-### 3. Test Bank Transfer Display
+### 2. Test Bank Transfer Display
 - [ ] Create a booking with bank transfer option
 - [ ] Verify account details are displayed correctly:
-  - Account Name: Desol Nurturers Limited
+  - Account Name: Desol Nurturers
   - Account Number: 1343210186
   - Paybill: 522522
 
-### 4. Monitor Logs
+### 3. Monitor Logs
 - [ ] Check Vercel function logs for errors
 - [ ] Monitor payment callback logs
 - [ ] Check database for payment status updates
@@ -166,11 +149,10 @@ If deployment fails:
    - Check M-Pesa API status
    - Review Vercel function logs
 
-2. **Card Payment Not Processing**
-   - Verify payment gateway credentials
-   - Check if gateway supports Kenya cards
-   - Review callback URL configuration
-   - Check payment gateway logs
+2. **Bank Transfer Not Confirmed**
+   - Verify funds landed in the bank account
+   - Ask client for the reference or screenshot
+   - Update payment status manually once confirmed
 
 3. **Payment Not Auto-Confirming**
    - Verify webhook endpoints are accessible
@@ -187,7 +169,6 @@ If deployment fails:
 
 - [ ] All environment variables set in Vercel
 - [ ] M-Pesa webhook configured
-- [ ] Payment gateway webhook configured
 - [ ] Test payments successful
 - [ ] Auto-confirmation working
 - [ ] Notifications sending correctly
