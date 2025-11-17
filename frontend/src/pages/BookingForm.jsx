@@ -103,6 +103,17 @@ const BookingForm = () => {
     paybillNumber: "522522",
   };
 
+  // Calculate session cost based on duration
+  const calculateSessionCost = (duration) => {
+    const durationNum = parseInt(duration, 10);
+    if (durationNum === 45) return 2500;
+    if (durationNum === 60) return 3000;
+    if (durationNum === 90) return 4000;
+    return 3000; // default to 60 mins pricing
+  };
+
+  const sessionAmount = calculateSessionCost(formData.sessionDuration);
+
   const sanitizedBaseUrl = (API_BASE_URL || "").replace(/\/$/, "");
   const buildApiUrl = useMemo(
     () => (path) => `${sanitizedBaseUrl}${path}`,
@@ -889,7 +900,10 @@ const BookingForm = () => {
                     required
                   />
                   <p className="helper-text">
-                    You will receive an M-Pesa prompt on this number to complete payment. If it fails, pay manually via Paybill {resolvedAccountDetails.paybillNumber} using your appointment code as the account number.
+                    <strong>M-Pesa Payment Details:</strong><br />
+                    Paybill: {resolvedAccountDetails.paybillNumber}<br />
+                    Account Number: Your appointment code (will be provided after booking)<br />
+                    Amount: KES {sessionAmount.toLocaleString()}
                   </p>
                 </div>
               )}
