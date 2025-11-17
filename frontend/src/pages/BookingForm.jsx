@@ -180,7 +180,7 @@ const BookingForm = () => {
         ...prev,
         paymentMethod: value,
         mpesaPhoneNumber: value === "bank" ? "" : prev.mpesaPhoneNumber,
-        transactionReference: value === "bank" ? prev.transactionReference : "",
+        transactionReference: prev.transactionReference,
       }));
       return;
     }
@@ -358,6 +358,43 @@ const BookingForm = () => {
     submitState.status === "validation-error" || submitState.status === "error"
       ? submitState.validationErrors || {}
       : {};
+
+  const renderInlinePaymentInstructions = () => {
+    if (formData.paymentMethod === "mpesa") {
+      return (
+        <div className="payment-instructions">
+          <h3>M-Pesa Instructions</h3>
+          <p><strong>Paybill:</strong> {resolvedAccountDetails.paybillNumber}</p>
+          <p><strong>Account Reference:</strong> Your appointment code (displayed after submission)</p>
+          <ol>
+            <li>Open the M-Pesa app or dial *334#</li>
+            <li>Select Lipa na M-Pesa &gt; Paybill and enter business number {resolvedAccountDetails.paybillNumber}</li>
+            <li>Use your appointment code (we’ll email it) as the account/reference number</li>
+            <li>Enter the agreed session amount and complete the payment</li>
+            <li>Keep the M-Pesa confirmation message and share the transaction code with us</li>
+          </ol>
+          <p>If you receive an STK push, confirm on your phone. Otherwise, pay manually using the steps above.</p>
+        </div>
+      );
+    }
+    if (formData.paymentMethod === "bank") {
+      return (
+        <div className="payment-instructions">
+          <h3>Bank Transfer Instructions</h3>
+          <p><strong>Account Name:</strong> {resolvedAccountDetails.accountName}</p>
+          <p><strong>Account Number:</strong> {resolvedAccountDetails.accountNumber}</p>
+          <p><strong>Reference:</strong> Your full name or appointment code (after submission)</p>
+          <ol>
+            <li>Send the session fee via mobile/online banking to the account above</li>
+            <li>Use your full name or future appointment code as the transaction reference</li>
+            <li>Take a screenshot or note the transaction code</li>
+            <li>Paste the transaction code below so we can verify payment quickly</li>
+          </ol>
+        </div>
+      );
+    }
+    return null;
+  };
 
   return (
     <div className="booking-page">
@@ -857,36 +894,33 @@ const BookingForm = () => {
                 </div>
               )}
             </div>
-            {formData.paymentMethod === "bank" && (
-              <div className="bank-transfer-panel" style={{ marginTop: "1rem" }}>
-                <div className="bank-details" style={{ background: "var(--card-bg)", border: "1px solid var(--border-color)", borderRadius: "8px", padding: "1rem", marginBottom: "1rem" }}>
-                  <p><strong>Account Name:</strong> {resolvedAccountDetails.accountName}</p>
-                  <p><strong>Account Number:</strong> {resolvedAccountDetails.accountNumber}</p>
-                  <p><strong>Paybill:</strong> {resolvedAccountDetails.paybillNumber}</p>
-                  <p>Use your appointment code or full name as the payment reference. Share the transaction reference so we can confirm your session.</p>
-                </div>
-                <div className="form-field">
-                  <label htmlFor="transactionReference">
-                    Bank Payment Reference <span>(required)</span>
-                  </label>
-                  <input
-                    id="transactionReference"
-                    name="transactionReference"
-                    type="text"
-                    placeholder="e.g., EFT/MPESA reference"
-                    value={formData.transactionReference}
-                    onChange={handleChange}
-                    required={formData.paymentMethod === "bank"}
-                  />
-                  {validationErrors.transactionReference && (
-                    <p className="error-text">{validationErrors.transactionReference}</p>
-                  )}
-                  <p className="helper-text">
-                    Enter the bank/EFT reference or type "Pending" if you will send it later.
-                  </p>
-                </div>
-              </div>
-            )}
+            <div className="form-field" style={{ marginTop: "1rem" }}>
+              <label htmlFor="transactionReference">
+                Transaction / Confirmation Code {formData.paymentMethod === "bank" && <span>(required)</span>}
+              </label>
+              <input
+                id="transactionReference"
+                name="transactionReference"
+                type="text"
+                placeholder={
+                  formData.paymentMethod === "bank"
+                    ? "Bank transfer reference"
+                    : "M-Pesa transaction code (if already paid)"
+                }
+                value={formData.transactionReference}
+                onChange={handleChange}
+                required={formData.paymentMethod === "bank"}
+              />
+              {validationErrors.transactionReference && (
+                <p className="error-text">{validationErrors.transactionReference}</p>
+              )}
+              <p className="helper-text">
+                Provide the payment confirmation code if you have already paid. For bank transfers this is required.
+              </p>
+            </div>
+
+            {renderInlinePaymentInstructions()}
+
             <div className="checkbox-group" style={{ marginTop: "1.5rem" }}>
               <div className="checkbox-item">
                 <input
