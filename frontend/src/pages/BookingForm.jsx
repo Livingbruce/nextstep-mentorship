@@ -883,7 +883,9 @@ const BookingForm = () => {
                   <p className="error-text">{validationErrors.paymentMethod}</p>
                 )}
                 <p className="helper-text">
-                  We’ll send an automatic M-Pesa prompt or you can pay manually via bank transfer.
+                  <strong>Payment Details:</strong><br />
+                  Paybill: {resolvedAccountDetails.paybillNumber}<br />
+                  Account Number: {resolvedAccountDetails.accountNumber}
                 </p>
               </div>
               {formData.paymentMethod === "mpesa" && (
