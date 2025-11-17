@@ -902,7 +902,7 @@ const BookingForm = () => {
                   <p className="helper-text">
                     <strong>M-Pesa Payment Details:</strong><br />
                     Paybill: {resolvedAccountDetails.paybillNumber}<br />
-                    Account Number: Your appointment code (will be provided after booking)<br />
+                    Account Number: {resolvedAccountDetails.accountNumber}<br />
                     Amount: KES {sessionAmount.toLocaleString()}
                   </p>
                 </div>
