@@ -394,9 +394,10 @@ const BookingForm = () => {
           <h3>Bank Transfer Instructions</h3>
           <p><strong>Account Name:</strong> {resolvedAccountDetails.accountName}</p>
           <p><strong>Account Number:</strong> {resolvedAccountDetails.accountNumber}</p>
+          <p><strong>Amount:</strong> KES {sessionAmount.toLocaleString()}</p>
           <p><strong>Reference:</strong> Your full name or appointment code (after submission)</p>
           <ol>
-            <li>Send the session fee via mobile/online banking to the account above</li>
+            <li>Send KES {sessionAmount.toLocaleString()} via mobile/online banking to the account above</li>
             <li>Use your full name or future appointment code as the transaction reference</li>
             <li>Take a screenshot or note the transaction code</li>
             <li>Paste the transaction code below so we can verify payment quickly</li>
