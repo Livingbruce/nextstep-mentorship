@@ -1,16 +1,41 @@
 import express from "express";
 import pool from "../db/pool.js";
 import { authMiddleware } from "../middleware/authMiddleware.js";
-import { uploadBook, uploadCover, uploadBookAndCover, getFileUrl, getFilePath, uploadFileToCloudinary, getCloudinarySignedUrl } from "../middleware/upload.js";
+import {
+  uploadBook,
+  uploadCover,
+  uploadBookAndCover,
+  getFileUrl,
+  getFilePath,
+  uploadFileToCloudinary,
+  getCloudinarySignedUrl,
+} from "../middleware/upload.js";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
 import emailService from "../services/emailService.js";
+import {
+  upsertBookDocument,
+  deleteBookDocument,
+  fetchStoreBooks,
+  fetchBookById,
+  fetchBooksForCounselor,
+  fetchAllBooks,
+} from "../services/firestoreBooksService.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const router = express.Router();
+
+async function fetchCounselorMeta(counselorId) {
+  if (!counselorId) return { name: null };
+  const counselor = await pool.query(
+    "SELECT name FROM counselors WHERE id = $1",
+    [counselorId]
+  );
+  return counselor.rows[0] || { name: null };
+}
 
 // ========== DIAGNOSTIC ROUTE (for testing Cloudinary) ==========
 router.get("/test-cloudinary", authMiddleware, async (req, res) => {
@@ -180,10 +205,8 @@ router.get("/test-cloudinary", authMiddleware, async (req, res) => {
 // Get all books (dashboard/admin)
 router.get("/", async (req, res) => {
   try {
-    const result = await pool.query(
-      "SELECT * FROM books ORDER BY created_at DESC"
-    );
-    res.json(result.rows);
+    const books = await fetchAllBooks(500);
+    res.json(books);
   } catch (err) {
     console.error("Error fetching books:", err);
     res.status(500).json({ error: "Failed to fetch books" });
@@ -195,30 +218,8 @@ router.get("/", async (req, res) => {
 // Public: list active books with optional filters
 router.get("/store/books", async (req, res) => {
   try {
-    const { q, format, counselorId } = req.query;
-    const params = [];
-    const where = ["is_active = true"];
-
-    if (format && (format === "soft" || format === "hard")) {
-      params.push(format);
-      where.push(`format = $${params.length}`);
-    }
-    if (counselorId) {
-      params.push(counselorId);
-      where.push(`counselor_id = $${params.length}`);
-    }
-    if (q) {
-      params.push(`%${q}%`);
-      where.push(`(title ILIKE $${params.length} OR author ILIKE $${params.length})`);
-    }
-
-    const sql = `SELECT id, title, author, price_cents, format, cover_image_url, chapter_count, page_count, description, file_url
-                 FROM books
-                 ${where.length ? "WHERE " + where.join(" AND ") : ""}
-                 ORDER BY created_at DESC
-                 LIMIT 100`;
-    const r = await pool.query(sql, params);
-    res.json(r.rows);
+    const books = await fetchStoreBooks(req.query);
+    res.json(books);
   } catch (err) {
     console.error("Error fetching store books:", err);
     res.status(500).json({ error: "Failed to fetch books" });
@@ -229,15 +230,17 @@ router.get("/store/books", async (req, res) => {
 router.get("/store/books/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const r = await pool.query(
-      `SELECT b.*, c.name as counselor_name
-       FROM books b
-       LEFT JOIN counselors c ON b.counselor_id = c.id
-       WHERE b.id = $1 AND b.is_active = true`,
-      [id]
-    );
-    if (r.rows.length === 0) return res.status(404).json({ error: "Book not found" });
-    res.json(r.rows[0]);
+    const book = await fetchBookById(id);
+    if (!book || book.is_active === false) {
+      return res.status(404).json({ error: "Book not found" });
+    }
+
+    if (!book.counselor_name && book.counselor_id) {
+      const counselor = await fetchCounselorMeta(book.counselor_id);
+      book.counselor_name = counselor?.name || null;
+    }
+
+    res.json(book);
   } catch (err) {
     console.error("Error fetching book detail:", err);
     res.status(500).json({ error: "Failed to fetch book" });
@@ -252,42 +255,42 @@ router.post("/store/books/:id/purchase", async (req, res) => {
       client_name,
       client_email,
       client_phone,
-      client_address,     // for hard copy
+      client_address,
       client_city,
       client_country,
       client_county,
       client_postal_code,
-      payment_method,     // 'mpesa' | 'bank'
+      payment_method,
       payment_reference,
     } = req.body;
 
-    // Fetch book and derive format/price
-    const bookRes = await pool.query(`SELECT id, title, price_cents, format FROM books WHERE id=$1 AND is_active=true`, [id]);
-    if (bookRes.rowCount === 0) return res.status(404).json({ error: "Book not found" });
-    const book = bookRes.rows[0];
+    const book = await fetchBookById(id);
+    if (!book || book.is_active === false) {
+      return res.status(404).json({ error: "Book not found" });
+    }
 
-    // Basic required fields
     if (!client_name || !client_email || !client_phone || !payment_method) {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
-    // For hard copies, require shipping address
-    if (book.format === "hard" && (!client_address || !client_city || !client_country)) {
-      return res.status(400).json({ error: "Shipping address required for hard copy" });
+    if (
+      book.format === "hard" &&
+      (!client_address || !client_city || !client_country)
+    ) {
+      return res.status(400).json({
+        error: "Shipping address required for hard copy",
+      });
     }
 
-    // Use email as a stand-in for client_telegram_id for web orders
     const clientTelegramId = client_email;
-
-    // Normalize payment method to match database constraints
     let normalizedPaymentMethod = payment_method;
-    if (payment_method === 'mpesa') {
-      normalizedPaymentMethod = 'M-Pesa';
-    } else if (payment_method === 'bank') {
-      normalizedPaymentMethod = 'Bank Transfer';
+    if (payment_method === "mpesa") {
+      normalizedPaymentMethod = "M-Pesa";
+    } else if (payment_method === "bank") {
+      normalizedPaymentMethod = "Bank Transfer";
     }
 
-    const totalAmount = book.price_cents; // shipping not handled here; can be set later
+    const totalAmount = book.price_cents;
     const r = await pool.query(
       `INSERT INTO book_orders (
          book_id, client_telegram_id, client_name, client_email, client_phone,
@@ -298,10 +301,22 @@ router.post("/store/books/:id/purchase", async (req, res) => {
          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'pending','ordered'
        ) RETURNING *`,
       [
-        book.id, clientTelegramId, client_name, client_email, client_phone,
-        client_address || null, client_city || null, client_country || null, client_county || null, client_postal_code || null,
-        normalizedPaymentMethod, payment_reference || null, book.price_cents, 0, totalAmount,
-        book.format
+        book.id,
+        clientTelegramId,
+        client_name,
+        client_email,
+        client_phone,
+        client_address || null,
+        client_city || null,
+        client_country || null,
+        client_county || null,
+        client_postal_code || null,
+        normalizedPaymentMethod,
+        payment_reference || null,
+        book.price_cents,
+        0,
+        totalAmount,
+        book.format,
       ]
     );
 
@@ -391,11 +406,8 @@ router.delete("/store/wishlist/:bookId", async (req, res) => {
 // Get books for logged-in counselor
 router.get("/my-books", authMiddleware, async (req, res) => {
   try {
-    const result = await pool.query(
-      "SELECT * FROM books WHERE counselor_id = $1 ORDER BY created_at DESC",
-      [req.user.counselorId]
-    );
-    res.json(result.rows);
+    const books = await fetchBooksForCounselor(req.user.counselorId);
+    res.json(books);
   } catch (err) {
     console.error("Error fetching counselor books:", err);
     res.status(500).json({ error: "Failed to fetch books" });
@@ -522,8 +534,14 @@ router.post("/", authMiddleware, uploadBookAndCover.fields([
         parsedPageCount
       ]
     );
-    console.log("✅ Book created successfully with format:", result.rows[0].format);
-    res.status(201).json(result.rows[0]);
+    const createdBook = result.rows[0];
+    const counselorMeta = await fetchCounselorMeta(req.user.counselorId);
+    await upsertBookDocument(createdBook, {
+      counselor_name: counselorMeta?.name || null,
+    });
+
+    console.log("✅ Book created successfully with format:", createdBook.format);
+    res.status(201).json(createdBook);
   } catch (err) {
     console.error("Error creating book:", err);
     res.status(500).json({ error: "Failed to add book: " + err.message });
@@ -625,12 +643,17 @@ router.put("/:id", authMiddleware, uploadBookAndCover.fields([
         req.user.counselorId
       ]
     );
-    
     if (result.rows.length === 0) {
       return res.status(404).json({ error: "Book not found" });
     }
     
-    res.json(result.rows[0]);
+    const updatedBook = result.rows[0];
+    const counselorMeta = await fetchCounselorMeta(req.user.counselorId);
+    await upsertBookDocument(updatedBook, {
+      counselor_name: counselorMeta?.name || null,
+    });
+    
+    res.json(updatedBook);
   } catch (err) {
     console.error("Error updating book:", err);
     res.status(500).json({ error: "Failed to update book" });
@@ -651,6 +674,7 @@ router.delete("/:id", authMiddleware, async (req, res) => {
       return res.status(404).json({ error: "Book not found" });
     }
     
+    await deleteBookDocument(id);
     res.json({ success: true, message: "Book deleted successfully" });
   } catch (err) {
     console.error("Error deleting book:", err);

@@ -23,6 +23,10 @@ const NavBar = () => {
     { path: "/profile", label: "Profile", icon: "⚙️" }
   ];
 
+  if (user?.is_admin) {
+    navItems.push({ path: "/admin", label: "Admin", icon: "🛡️" });
+  }
+
   return (
     <>
       <nav style={{

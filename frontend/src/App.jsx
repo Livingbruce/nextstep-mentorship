@@ -4,6 +4,7 @@ import { AuthProvider } from "./utils/AuthContext.jsx";
 import { ThemeProvider } from "./ThemeContext.jsx";
 import { SecurityProvider } from "./SecurityContext.jsx";
 import PrivateRoute from "./components/PrivateRoute.jsx";
+import AdminRoute from "./components/AdminRoute.jsx";
 import "./styles/theme.css";
 
 // Page imports
@@ -37,6 +38,7 @@ import EmailLogin from "./pages/store/EmailLogin.jsx";
 import StoreProfile from "./pages/store/Profile.jsx";
 import StoreAuth from "./components/StoreAuth.jsx";
 import OrderThanks from "./pages/store/OrderThanks.jsx";
+import AdminPanel from "./pages/AdminPanel.jsx";
 
 const App = () => {
   return (
@@ -125,6 +127,11 @@ const App = () => {
             <PrivateRoute>
               <Profile />
             </PrivateRoute>
+          } />
+          <Route path="/admin" element={
+            <AdminRoute>
+              <AdminPanel />
+            </AdminRoute>
           } />
         </Routes>
           </Router>

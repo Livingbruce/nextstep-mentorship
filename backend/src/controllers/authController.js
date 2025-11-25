@@ -36,7 +36,11 @@ export const login = async (req, res) => {
     }
 
     const token = jwt.sign(
-      { counselorId: counselor.id, email: counselor.email },
+      {
+        counselorId: counselor.id,
+        email: counselor.email,
+        isAdmin: counselor.is_admin || false,
+      },
       jwtSecret,
       { expiresIn: JWT_EXPIRES_IN }
     );

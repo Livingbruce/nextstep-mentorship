@@ -26,6 +26,7 @@ import counselorsRoutes from "./routes/counselors.js";
 import notificationsRoutes from "./routes/notifications.js";
 import webBookingRoutes from "./routes/webBooking.js";
 import paymentsRoutes from "./routes/payments.js";
+import adminRoutes from "./routes/admin.js";
 
 // Security middleware
 import { 
@@ -274,6 +275,7 @@ app.use("/api/recent-activity", recentActivityRoutes);
 app.use("/api/notifications", notificationsRoutes);
 app.use("/api/web-bookings", webBookingRoutes);
 app.use("/api/payments", paymentsRoutes);
+app.use("/api/admin", adminRoutes);
 
 // Public books endpoint for bot (no auth required)
 app.get("/api/books/public", async (req, res) => {

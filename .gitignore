@@ -88,6 +88,9 @@ ehthumbs.db
 Thumbs.db
 .vercel
 
+# Firebase service account keys
+*firebase-adminsdk*.json
+
 # Local Netlify folder
 .netlify
 
