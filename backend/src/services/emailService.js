@@ -207,6 +207,10 @@ class EmailService {
     `;
   }
 
+  canSendTransactionalEmails() {
+    return this.hasEmailConfig && this.usingRealSMTP;
+  }
+
   async sendEmailVerification(email, firstName, verificationToken) {
     if (!this.hasEmailConfig || !this.usingRealSMTP) {
       console.error('❌ Email verification aborted: Email service credentials are not configured.');

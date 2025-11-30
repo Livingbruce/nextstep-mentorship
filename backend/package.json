@@ -23,6 +23,7 @@
     "firebase-admin": "^11.11.1",
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
+    "mime-types": "^3.0.2",
     "morgan": "^1.10.0",
     "multer": "^2.0.2",
     "node-cron": "^3.0.3",

@@ -7,8 +7,7 @@ import {
   uploadBookAndCover,
   getFileUrl,
   getFilePath,
-  uploadFileToCloudinary,
-  getCloudinarySignedUrl,
+  uploadFileToFirebase,
 } from "../middleware/upload.js";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -22,11 +21,55 @@ import {
   fetchBooksForCounselor,
   fetchAllBooks,
 } from "../services/firestoreBooksService.js";
+import {
+  isFirebaseStorageUrl,
+  extractFirebaseStoragePath,
+  downloadFromFirebaseStorage,
+  downloadFromFirebaseUrl,
+  getFirebaseSignedDownloadUrl,
+} from "../utils/firebaseStorage.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const router = express.Router();
+
+async function downloadUrlToBuffer(targetUrl) {
+  if (!targetUrl) {
+    throw new Error("Missing download URL");
+  }
+
+  const https = await import("https");
+  const http = await import("http");
+  const urlModule = await import("url");
+  const parsedUrl = new urlModule.URL(targetUrl);
+  const protocol = parsedUrl.protocol === "https:" ? https : http;
+  const redirectStatuses = new Set([301, 302, 303, 307, 308]);
+
+  return new Promise((resolve, reject) => {
+    const request = protocol.get(parsedUrl, (response) => {
+      if (redirectStatuses.has(response.statusCode) && response.headers.location) {
+        response.resume();
+        const redirectUrl = new urlModule.URL(response.headers.location, parsedUrl);
+        downloadUrlToBuffer(redirectUrl.toString()).then(resolve).catch(reject);
+        return;
+      }
+
+      if (response.statusCode !== 200) {
+        reject(new Error(`Failed to download resource: ${response.statusCode}`));
+        response.resume();
+        return;
+      }
+
+      const chunks = [];
+      response.on("data", (chunk) => chunks.push(chunk));
+      response.on("end", () => resolve(Buffer.concat(chunks)));
+      response.on("error", reject);
+    });
+
+    request.on("error", reject);
+  });
+}
 
 async function fetchCounselorMeta(counselorId) {
   if (!counselorId) return { name: null };
@@ -37,142 +80,117 @@ async function fetchCounselorMeta(counselorId) {
   return counselor.rows[0] || { name: null };
 }
 
-// ========== DIAGNOSTIC ROUTE (for testing Cloudinary) ==========
-router.get("/test-cloudinary", authMiddleware, async (req, res) => {
+// ========== DIAGNOSTIC ROUTE (for testing Firebase Storage) ==========
+router.get("/test-firebase", authMiddleware, async (req, res) => {
   try {
-    const cloudinary = (await import('../utils/cloudinary.js')).default;
+    const { getFirebaseStorage } = await import('../utils/firebaseAdmin.js');
+    const storage = getFirebaseStorage();
+    const bucket = storage.bucket();
     
     const results = {
-      cloudinaryConfigured: !!(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET),
-      cloudName: process.env.CLOUDINARY_CLOUD_NAME?.trim(),
-      apiKey: process.env.CLOUDINARY_API_KEY ? `${process.env.CLOUDINARY_API_KEY.substring(0, 6)}...${process.env.CLOUDINARY_API_KEY.substring(process.env.CLOUDINARY_API_KEY.length - 4)}` : 'missing',
+      firebaseConfigured: !!process.env.FIREBASE_PROJECT_ID,
+      projectId: process.env.FIREBASE_PROJECT_ID || 'missing',
+      bucketName: bucket.name,
       tests: []
     };
     
     // Test 1: List files in books folder
     try {
-      const listResult = await cloudinary.api.resources({
-        type: 'upload',
-        resource_type: 'raw',
-        prefix: 'books/',
-        max_results: 10
-      });
+      const [files] = await bucket.getFiles({ prefix: 'books/', maxResults: 10 });
       results.tests.push({
         test: 'List files in books folder',
         success: true,
-        count: listResult.resources?.length || 0,
-        files: listResult.resources?.map(r => ({
-          public_id: r.public_id,
-          format: r.format,
-          bytes: r.bytes,
-          secure_url: r.secure_url,
-          created_at: r.created_at
-        })) || []
+        count: files.length,
+        files: files.map(f => ({
+          name: f.name,
+          size: f.metadata.size,
+          contentType: f.metadata.contentType,
+          created: f.metadata.timeCreated
+        }))
       });
     } catch (error) {
       results.tests.push({
         test: 'List files in books folder',
         success: false,
-        error: error.message,
-        http_code: error.http_code
+        error: error.message
       });
     }
     
     // Test 2: List files in covers folder
     try {
-      const listResult = await cloudinary.api.resources({
-        type: 'upload',
-        resource_type: 'image',
-        prefix: 'covers/',
-        max_results: 10
-      });
+      const [files] = await bucket.getFiles({ prefix: 'covers/', maxResults: 10 });
       results.tests.push({
         test: 'List files in covers folder',
         success: true,
-        count: listResult.resources?.length || 0,
-        files: listResult.resources?.map(r => ({
-          public_id: r.public_id,
-          format: r.format,
-          bytes: r.bytes,
-          secure_url: r.secure_url,
-          created_at: r.created_at
-        })) || []
+        count: files.length,
+        files: files.map(f => ({
+          name: f.name,
+          size: f.metadata.size,
+          contentType: f.metadata.contentType,
+          created: f.metadata.timeCreated
+        }))
       });
     } catch (error) {
       results.tests.push({
         test: 'List files in covers folder',
         success: false,
-        error: error.message,
-        http_code: error.http_code
+        error: error.message
       });
     }
     
     // Test 3: Get a specific file from database and check if it exists
     try {
       const bookResult = await pool.query(
-        `SELECT id, title, file_url FROM books WHERE file_url LIKE '%cloudinary.com%' LIMIT 1`
+        `SELECT id, title, file_url FROM books WHERE file_url LIKE '%firebasestorage.googleapis.com%' LIMIT 1`
       );
       
       if (bookResult.rows.length > 0) {
         const book = bookResult.rows[0];
-        const urlParts = book.file_url.split('/');
-        const uploadIndex = urlParts.findIndex(part => part === 'upload');
+        const storagePath = extractFirebaseStoragePath(book.file_url);
         
-        if (uploadIndex !== -1) {
-          let publicIdParts = urlParts.slice(uploadIndex + 2);
-          const lastPart = publicIdParts[publicIdParts.length - 1];
-          if (lastPart.includes('?')) {
-            publicIdParts[publicIdParts.length - 1] = lastPart.split('?')[0];
-          }
-          // Keep the extension - Cloudinary stores public_id WITH extension for raw files
-          const publicId = publicIdParts.join('/');
-          
-          // Check if file exists
+        if (storagePath) {
           try {
-            const resource = await cloudinary.api.resource(publicId, {
-              resource_type: 'raw'
-            });
+            const file = bucket.file(storagePath);
+            const [exists] = await file.exists();
+            const [metadata] = await file.getMetadata();
+            
             results.tests.push({
-              test: `Check if file exists: ${publicId}`,
+              test: `Check if file exists: ${storagePath}`,
               success: true,
-              public_id: publicId,
+              storagePath: storagePath,
               file_url: book.file_url,
-              resource: {
-                public_id: resource.public_id,
-                format: resource.format,
-                bytes: resource.bytes,
-                secure_url: resource.secure_url,
-                created_at: resource.created_at,
-                type: resource.type
+              exists: exists,
+              metadata: {
+                name: metadata.name,
+                size: metadata.size,
+                contentType: metadata.contentType,
+                created: metadata.timeCreated
               }
             });
             
             // Test 4: Try to download the file
             try {
-              const { downloadFromCloudinary } = await import('../utils/cloudinary.js');
-              const buffer = await downloadFromCloudinary(publicId, 'raw');
+              const buffer = await downloadFromFirebaseStorage(storagePath);
               results.tests.push({
-                test: `Download file: ${publicId}`,
+                test: `Download file: ${storagePath}`,
                 success: true,
                 bufferSize: buffer.length,
                 message: 'File downloaded successfully'
               });
             } catch (downloadError) {
               results.tests.push({
-                test: `Download file: ${publicId}`,
+                test: `Download file: ${storagePath}`,
                 success: false,
-                error: downloadError.message,
-                http_code: downloadError.http_code
+                error: downloadError.message
               });
             }
           } catch (error) {
             results.tests.push({
-              test: `Check if file exists: ${publicId}`,
+              test: `Check if file exists: ${storagePath}`,
               success: false,
-              public_id: publicId,
+              storagePath: storagePath,
               file_url: book.file_url,
-              error: error.message,
-              http_code: error.http_code
+              error: error.message
             });
           }
         }
@@ -180,7 +198,7 @@ router.get("/test-cloudinary", authMiddleware, async (req, res) => {
         results.tests.push({
           test: 'Get file from database',
           success: false,
-          message: 'No books with Cloudinary URLs found in database'
+          message: 'No books with Firebase Storage URLs found in database'
         });
       }
     } catch (error) {
@@ -193,9 +211,9 @@ router.get("/test-cloudinary", authMiddleware, async (req, res) => {
     
     res.json(results);
   } catch (err) {
-    console.error("Error testing Cloudinary:", err);
+    console.error("Error testing Firebase Storage:", err);
     res.status(500).json({ 
-      error: "Failed to test Cloudinary", 
+      error: "Failed to test Firebase Storage", 
       details: err.message,
       stack: err.stack 
     });
@@ -483,22 +501,22 @@ router.post("/", authMiddleware, uploadBookAndCover.fields([
       return res.status(400).json({ error: "Description is required" });
     }
     
-    // Handle uploaded files - upload to Cloudinary
+    // Handle uploaded files - upload to Firebase Storage
     let finalFileUrl = file_url || null;
     let finalCoverUrl = cover_image_url || null;
     
     if (req.files?.bookFile?.[0]) {
       const uploadedFile = req.files.bookFile[0];
-      // Upload to Cloudinary and get Cloudinary URL
-      finalFileUrl = await uploadFileToCloudinary(uploadedFile.path, 'book');
-      console.log(`📤 Book file uploaded to Cloudinary: ${finalFileUrl}`);
+      // Upload to Firebase Storage and get Firebase URL
+      finalFileUrl = await uploadFileToFirebase(uploadedFile.path, 'book');
+      console.log(`📤 Book file uploaded to Firebase Storage: ${finalFileUrl}`);
     }
     
     if (req.files?.coverFile?.[0]) {
       const uploadedCover = req.files.coverFile[0];
-      // Upload to Cloudinary and get Cloudinary URL
-      finalCoverUrl = await uploadFileToCloudinary(uploadedCover.path, 'cover');
-      console.log(`📤 Cover image uploaded to Cloudinary: ${finalCoverUrl}`);
+      // Upload to Firebase Storage and get Firebase URL
+      finalCoverUrl = await uploadFileToFirebase(uploadedCover.path, 'cover');
+      console.log(`📤 Cover image uploaded to Firebase Storage: ${finalCoverUrl}`);
     }
     
     console.log("Creating book:", { 
@@ -608,17 +626,17 @@ router.put("/:id", authMiddleware, uploadBookAndCover.fields([
     
     // Use uploaded file if provided, otherwise keep existing or use provided URL
     if (req.files?.bookFile?.[0]) {
-      // Upload to Cloudinary and get Cloudinary URL
-      finalFileUrl = await uploadFileToCloudinary(req.files.bookFile[0].path, 'book');
-      console.log(`📤 Book file uploaded to Cloudinary: ${finalFileUrl}`);
+      // Upload to Firebase Storage and get Firebase URL
+      finalFileUrl = await uploadFileToFirebase(req.files.bookFile[0].path, 'book');
+      console.log(`📤 Book file uploaded to Firebase Storage: ${finalFileUrl}`);
     } else if (!file_url && existingBook.rows[0].file_url) {
       finalFileUrl = existingBook.rows[0].file_url;
     }
     
     if (req.files?.coverFile?.[0]) {
-      // Upload to Cloudinary and get Cloudinary URL
-      finalCoverUrl = await uploadFileToCloudinary(req.files.coverFile[0].path, 'cover');
-      console.log(`📤 Cover image uploaded to Cloudinary: ${finalCoverUrl}`);
+      // Upload to Firebase Storage and get Firebase URL
+      finalCoverUrl = await uploadFileToFirebase(req.files.coverFile[0].path, 'cover');
+      console.log(`📤 Cover image uploaded to Firebase Storage: ${finalCoverUrl}`);
     } else if (!cover_image_url && existingBook.rows[0].cover_image_url) {
       finalCoverUrl = existingBook.rows[0].cover_image_url;
     }
@@ -1072,182 +1090,62 @@ router.post("/send-email/:bookId", async (req, res) => {
       return res.status(404).json({ error: "Book file not available" });
     }
     
-    // Check if file is in Cloudinary or local
+    // Check if file is in Firebase Storage or local
     let attachment = null;
     let fileExists = false;
     let downloadUrl = null;
     
-    // Check if it's a Cloudinary URL
-    if (book.file_url.includes('cloudinary.com')) {
-      // It's a Cloudinary URL - try to download, but provide download link as fallback
+    // Check if it's a Firebase Storage URL
+    if (isFirebaseStorageUrl(book.file_url)) {
+      // Try direct download first (public assets with token)
+      downloadUrl = book.file_url;
       try {
-        const { downloadFromCloudinary } = await import('../utils/cloudinary.js');
-        
-        // Extract public_id from Cloudinary URL
-        const urlParts = book.file_url.split('/');
-        const uploadIndex = urlParts.findIndex(part => part === 'upload');
-        if (uploadIndex === -1) {
-          throw new Error('Invalid Cloudinary URL format');
-        }
-        
-        // Get public_id (everything after 'upload/v.../')
-        // Handle both authenticated and public URLs
-        let publicIdParts = urlParts.slice(uploadIndex + 2); // Skip 'upload' and version
-        
-        // Remove query parameters if present
-        const lastPart = publicIdParts[publicIdParts.length - 1];
-        if (lastPart.includes('?')) {
-          publicIdParts[publicIdParts.length - 1] = lastPart.split('?')[0];
-        }
-        
-        // Keep the extension - Cloudinary stores public_id WITH extension for raw files
-        const publicId = publicIdParts.join('/');
-        console.log(`✅ Extracted public_id: ${publicId}`);
-        console.log(`📋 Original Cloudinary URL: ${book.file_url}`);
-        
-        // For restricted files, we need to use signed URLs or Admin API
-        // First, get the file resource to check its access type
+        const directBuffer = await downloadUrlToBuffer(book.file_url);
+        fileExists = true;
+        attachment = {
+          filename: `${book.title}${path.extname(book.file_url) || '.pdf'}`,
+          content: directBuffer,
+        };
+        console.log("✅ Downloaded file from Firebase Storage using public URL");
+      } catch (directError) {
+        console.warn(
+          `⚠️  Direct download from Firebase Storage failed (${directError.message}). Trying storage path.`
+        );
+      }
+
+      if (!fileExists) {
+        // Extract storage path and download directly from Firebase Storage
         try {
-          const cloudinary = (await import('../utils/cloudinary.js')).default;
-          const resource = await cloudinary.api.resource(publicId, {
-            resource_type: 'raw'
-          });
+          const storagePath = extractFirebaseStoragePath(book.file_url);
+          if (!storagePath) {
+            throw new Error('Invalid Firebase Storage URL format');
+          }
           
-          console.log(`✅ File resource retrieved:`, {
-            public_id: resource.public_id,
-            secure_url: resource.secure_url,
-            type: resource.type,
-            bytes: resource.bytes,
-            access_mode: resource.access_mode
-          });
+          console.log(`✅ Extracted storage path: ${storagePath}`);
+          console.log(`📋 Original Firebase Storage URL: ${book.file_url}`);
           
-          // For restricted files, generate a signed URL using Cloudinary's url() method
-          // with sign_url: true and expires_at for authentication
-          const expiresAt = Math.floor(Date.now() / 1000) + 3600; // 1 hour expiry
-          const signedUrl = cloudinary.url(publicId, {
-            resource_type: 'raw',
-            secure: true,
-            sign_url: true,
-            expires_at: expiresAt
-          });
-          
-          console.log(`✅ Generated signed URL for restricted file: ${signedUrl.substring(0, 100)}...`);
-          
-          // Download from the signed URL
+          // Download directly from Firebase Storage
           try {
-            const https = await import('https');
-            const http = await import('http');
-            const urlModule = await import('url');
-            
-            const fileUrl = new urlModule.URL(signedUrl);
-            const protocol = fileUrl.protocol === 'https:' ? https : http;
-            
-            const fileBuffer = await new Promise((resolve, reject) => {
-              protocol.get(signedUrl, (response) => {
-                if (response.statusCode !== 200) {
-                  reject(new Error(`Failed to download from signed URL: ${response.statusCode}`));
-                  return;
-                }
-                const chunks = [];
-                response.on('data', (chunk) => chunks.push(chunk));
-                response.on('end', () => resolve(Buffer.concat(chunks)));
-                response.on('error', reject);
-              }).on('error', reject);
-            });
-            
+            const fileBuffer = await downloadFromFirebaseStorage(storagePath);
             fileExists = true;
             attachment = {
               filename: `${book.title}${path.extname(book.file_url) || '.pdf'}`,
               content: fileBuffer
             };
-            // Generate a new signed URL for the email download link (with longer expiry)
-            const emailExpiresAt = Math.floor(Date.now() / 1000) + 86400; // 24 hours expiry for email link
-            downloadUrl = cloudinary.url(publicId, {
-              resource_type: 'raw',
-              secure: true,
-              sign_url: true,
-              expires_at: emailExpiresAt
-            });
-            console.log(`✅ Downloaded file from Cloudinary signed URL for attachment`);
+            
+            // Generate a signed URL for the email download link (with longer expiry)
+            downloadUrl = await getFirebaseSignedDownloadUrl(storagePath, 86400); // 24 hours expiry
+            console.log(`✅ Downloaded file from Firebase Storage for attachment`);
           } catch (downloadError) {
-            console.warn(`⚠️  Could not download from signed URL (${downloadError.message}), generating download link only`);
+            console.warn(`⚠️  Could not download from Firebase Storage (${downloadError.message}), generating signed URL only`);
             // Still provide a signed download URL even if we can't attach the file
-            const emailExpiresAt = Math.floor(Date.now() / 1000) + 86400; // 24 hours expiry
-            downloadUrl = cloudinary.url(publicId, {
-              resource_type: 'raw',
-              secure: true,
-              sign_url: true,
-              expires_at: emailExpiresAt
-            });
+            downloadUrl = await getFirebaseSignedDownloadUrl(storagePath, 86400); // 24 hours expiry
           }
-        } catch (resourceError) {
-          console.warn(`⚠️  Could not get file resource or generate signed URL (${resourceError.message}), trying fallback`);
-          // Fallback: try to generate signed URL directly
-          try {
-            const cloudinary = (await import('../utils/cloudinary.js')).default;
-            const expiresAt = Math.floor(Date.now() / 1000) + 3600;
-            const signedUrl = cloudinary.url(publicId, {
-              resource_type: 'raw',
-              secure: true,
-              sign_url: true,
-              expires_at: expiresAt
-            });
-            
-            const https = await import('https');
-            const http = await import('http');
-            const urlModule = await import('url');
-            
-            const fileUrl = new urlModule.URL(signedUrl);
-            const protocol = fileUrl.protocol === 'https:' ? https : http;
-            
-            const fileBuffer = await new Promise((resolve, reject) => {
-              protocol.get(signedUrl, (response) => {
-                if (response.statusCode !== 200) {
-                  reject(new Error(`Failed to download from signed URL: ${response.statusCode}`));
-                  return;
-                }
-                const chunks = [];
-                response.on('data', (chunk) => chunks.push(chunk));
-                response.on('end', () => resolve(Buffer.concat(chunks)));
-                response.on('error', reject);
-              }).on('error', reject);
-            });
-            
-            fileExists = true;
-            attachment = {
-              filename: `${book.title}${path.extname(book.file_url) || '.pdf'}`,
-              content: fileBuffer
-            };
-            const emailExpiresAt = Math.floor(Date.now() / 1000) + 86400;
-            downloadUrl = cloudinary.url(publicId, {
-              resource_type: 'raw',
-              secure: true,
-              sign_url: true,
-              expires_at: emailExpiresAt
-            });
-            console.log(`✅ Downloaded file from Cloudinary signed URL (fallback)`);
-          } catch (fallbackError) {
-            console.warn(`⚠️  All download methods failed (${fallbackError.message}), providing download link only`);
-            // Last resort: try to generate a signed URL for the download link
-            try {
-              const cloudinary = (await import('../utils/cloudinary.js')).default;
-              const emailExpiresAt = Math.floor(Date.now() / 1000) + 86400;
-              downloadUrl = cloudinary.url(publicId, {
-                resource_type: 'raw',
-                secure: true,
-                sign_url: true,
-                expires_at: emailExpiresAt
-              });
-            } catch (urlError) {
-              console.warn(`⚠️  Could not generate signed URL, using original URL`);
-              downloadUrl = book.file_url;
-            }
-          }
+        } catch (error) {
+          console.warn(`⚠️  Error processing Firebase Storage URL:`, error);
+          // Fallback: use original URL
+          downloadUrl = book.file_url;
         }
-      } catch (error) {
-        console.warn(`⚠️  Error processing Cloudinary URL:`, error);
-        // Fallback: use original URL
-        downloadUrl = book.file_url;
       }
     } else if (book.file_url.includes('/api/books/files/')) {
       // Local file - check if it exists
@@ -1286,32 +1184,27 @@ router.post("/send-email/:bookId", async (req, res) => {
     let coverImageCid = null;
     if (book.cover_image_url) {
       try {
-        const https = await import('https');
-        const http = await import('http');
-        const urlModule = await import('url');
-        
-        const coverUrl = new urlModule.URL(book.cover_image_url);
-        const protocol = coverUrl.protocol === 'https:' ? https : http;
-        
-        const coverBuffer = await new Promise((resolve, reject) => {
-          protocol.get(book.cover_image_url, (response) => {
-            if (response.statusCode !== 200) {
-              reject(new Error(`Failed to download cover: ${response.statusCode}`));
-              return;
+        let coverBuffer = null;
+        try {
+          coverBuffer = await downloadUrlToBuffer(book.cover_image_url);
+        } catch (coverError) {
+          if (isFirebaseStorageUrl(book.cover_image_url)) {
+            const storagePath = extractFirebaseStoragePath(book.cover_image_url);
+            if (!storagePath) {
+              throw coverError;
             }
-            const chunks = [];
-            response.on('data', (chunk) => chunks.push(chunk));
-            response.on('end', () => resolve(Buffer.concat(chunks)));
-            response.on('error', reject);
-          }).on('error', reject);
-        });
-        
-        coverImageCid = 'cover-image';
+            coverBuffer = await downloadFromFirebaseStorage(storagePath);
+          } else {
+            throw coverError;
+          }
+        }
+
+        coverImageCid = "cover-image";
         attachments.push({
-          filename: `cover-${book.title}${path.extname(book.cover_image_url) || '.jpg'}`,
+          filename: `cover-${book.title}${path.extname(book.cover_image_url) || ".jpg"}`,
           content: coverBuffer,
           cid: coverImageCid,
-          contentDisposition: 'inline' // Not downloadable
+          contentDisposition: "inline", // Not downloadable
         });
         console.log(`✅ Cover image included in email (embedded)`);
       } catch (error) {

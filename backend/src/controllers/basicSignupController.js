@@ -59,37 +59,69 @@ export const basicSignup = async (req, res) => {
     
     // Update the counselor record with the verification token
     await pool.query(
-      'UPDATE counselors SET email_verification_token = $1 WHERE id = $2',
+      `UPDATE counselors 
+       SET email_verification_token = $1,
+           email_verification_delivery_status = 'pending',
+           email_verification_sent_at = NULL,
+           email_verification_attempts = 0,
+           email_verification_last_error = NULL
+       WHERE id = $2`,
       [verificationToken, newCounselor.id]
     );
 
-    // Send verification email
+    let emailDeliveryStatus = 'pending';
+    let emailDeliveryNote = 'Please check your inbox and spam folder for the verification link.';
+
+    if (emailService.canSendTransactionalEmails()) {
     try {
       await emailService.sendEmailVerification(email, firstName, verificationToken);
+        await pool.query(
+          `UPDATE counselors
+             SET email_verification_sent_at = NOW(),
+                 email_verification_attempts = email_verification_attempts + 1,
+                 email_verification_delivery_status = 'sent',
+                 email_verification_last_error = NULL
+           WHERE id = $1`,
+          [newCounselor.id]
+        );
+        emailDeliveryStatus = 'sent';
     } catch (emailError) {
       console.error('❌ Failed to send verification email:', emailError);
-      
-      // Clean up by removing the newly created counselor to avoid unusable accounts
+        await pool.query(
+          `UPDATE counselors
+             SET email_verification_sent_at = NOW(),
+                 email_verification_attempts = email_verification_attempts + 1,
+                 email_verification_delivery_status = 'failed',
+                 email_verification_last_error = $2
+           WHERE id = $1`,
+          [newCounselor.id, emailError.message?.substring(0, 500) || 'Email delivery failed']
+        );
+        emailDeliveryStatus = 'failed';
+        emailDeliveryNote = 'We could not send the verification email automatically. Our system will keep retrying and you will receive it shortly.';
+      }
+    } else {
       await pool.query(
-        'DELETE FROM counselors WHERE id = $1',
+        `UPDATE counselors
+           SET email_verification_delivery_status = 'queued',
+               email_verification_last_error = 'Email service not configured'
+         WHERE id = $1`,
         [newCounselor.id]
       );
-      
-      return res.status(500).json({
-        error: 'Failed to send verification email. Please try again later or contact support.',
-        details: emailError.message || 'Email service not configured'
-      });
+      emailDeliveryStatus = 'queued';
+      emailDeliveryNote = 'Email delivery is temporarily queued. Once email credentials are configured, we will automatically send the verification link.';
     }
 
     res.status(201).json({
       success: true,
-      message: 'Account created successfully. Please check your email to confirm your address.',
+      message: 'Account created successfully.',
       counselor: {
         id: newCounselor.id,
         name: newCounselor.name,
         email: newCounselor.email,
         verificationStatus: newCounselor.verification_status
       },
+      emailStatus: emailDeliveryStatus,
+      emailNote: emailDeliveryNote,
       nextSteps: {
         checkEmail: 'Check your email for a confirmation link',
         clickLink: 'Click the confirmation link to activate your account',
@@ -167,7 +199,7 @@ export const confirmEmail = async (req, res) => {
         emailConfirmed: true
       },
       nextStep: {
-        message: 'You can now complete your therapist registration.',
+        message: 'You can now complete your counselor registration.',
         redirectUrl: '/signup?verified=true'
       }
     });
@@ -177,6 +209,112 @@ export const confirmEmail = async (req, res) => {
     res.status(500).json({ 
       error: 'Failed to confirm email',
       message: 'There was an error confirming your email. Please try again.'
+    });
+  }
+};
+
+export const resendVerificationEmail = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ error: "Email is required" });
+    }
+
+    const counselorResult = await pool.query(
+      `SELECT id, name, email_confirmed, email_verification_token, email_verification_attempts
+       FROM counselors
+       WHERE email = $1`,
+      [email]
+    );
+
+    if (counselorResult.rows.length === 0) {
+      return res.status(404).json({ error: "Account not found for that email" });
+    }
+
+    const counselor = counselorResult.rows[0];
+
+    if (counselor.email_confirmed) {
+      return res.status(200).json({
+        success: true,
+        message: "Email already confirmed. You can log in.",
+        emailStatus: "delivered",
+      });
+    }
+
+    let token = counselor.email_verification_token;
+    if (!token) {
+      const crypto = await import("crypto");
+      token = crypto.randomBytes(32).toString("hex");
+
+      await pool.query(
+        `UPDATE counselors
+           SET email_verification_token = $1,
+               email_verification_delivery_status = 'pending',
+               email_verification_attempts = 0,
+               email_verification_sent_at = NULL,
+               email_verification_last_error = NULL
+         WHERE id = $2`,
+        [token, counselor.id]
+      );
+    }
+
+    if (!emailService.canSendTransactionalEmails()) {
+      await pool.query(
+        `UPDATE counselors
+           SET email_verification_delivery_status = 'queued',
+               email_verification_last_error = 'Email service not configured'
+         WHERE id = $1`,
+        [counselor.id]
+      );
+      return res.status(202).json({
+        success: true,
+        emailStatus: "queued",
+        message:
+          "Email delivery is temporarily queued. We will resend as soon as email credentials are available.",
+      });
+    }
+
+    try {
+      const firstName = counselor.name?.split(" ")?.[0] || "Counselor";
+      await emailService.sendEmailVerification(email, firstName, token);
+      await pool.query(
+        `UPDATE counselors
+           SET email_verification_sent_at = NOW(),
+               email_verification_attempts = email_verification_attempts + 1,
+               email_verification_delivery_status = 'sent',
+               email_verification_last_error = NULL
+         WHERE id = $1`,
+        [counselor.id]
+      );
+
+      res.status(200).json({
+        success: true,
+        emailStatus: "sent",
+        message: "Verification email resent successfully.",
+      });
+    } catch (error) {
+      await pool.query(
+        `UPDATE counselors
+           SET email_verification_sent_at = NOW(),
+               email_verification_attempts = email_verification_attempts + 1,
+               email_verification_delivery_status = 'failed',
+               email_verification_last_error = $2
+         WHERE id = $1`,
+        [counselor.id, error.message?.substring(0, 500) || "Email delivery failed"]
+      );
+
+      res.status(500).json({
+        success: false,
+        emailStatus: "failed",
+        message: "Failed to resend email. We will keep retrying automatically.",
+      });
+    }
+  } catch (error) {
+    console.error("Resend verification error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Could not resend verification email. Please try again later.",
     });
   }
 };

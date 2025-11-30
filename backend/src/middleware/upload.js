@@ -3,7 +3,7 @@ import path from 'path';
 import os from 'os';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
-import { uploadToCloudinary, getSignedUrl } from '../utils/cloudinary.js';
+import { uploadFileToFirebaseStorage } from "../utils/firebaseStorage.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -152,64 +152,19 @@ export const getFilePath = (filename, type = 'book') => {
 };
 
 /**
- * Upload file to Cloudinary and return Cloudinary URL
+ * Upload file to Firebase Storage and return Firebase Storage URL
  * @param {string} filePath - Local file path
  * @param {string} type - 'book' or 'cover'
- * @returns {Promise<string>} Cloudinary public URL
+ * @returns {Promise<string>} Firebase Storage download URL
  */
-export const uploadFileToCloudinary = async (filePath, type = 'book') => {
+export const uploadFileToFirebase = async (filePath, type = "book") => {
   try {
-    // Check if Cloudinary is configured
-    if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
-      console.warn('⚠️  Cloudinary not configured. Using local file URL.');
-      // Fallback to local URL
-      return getFileUrl(path.basename(filePath), type);
-    }
-
-    const folder = type === 'book' ? 'books' : 'covers';
-    const resourceType = type === 'book' ? 'raw' : 'image';
-    
-    const result = await uploadToCloudinary(filePath, folder, null, resourceType);
-    console.log(`✅ File uploaded to Cloudinary: ${result.public_id}`);
-    
-    return result.secure_url; // Return Cloudinary public URL
+    const result = await uploadFileToFirebaseStorage(filePath, { type });
+    console.log(`✅ File uploaded to Firebase Storage: ${result.storagePath}`);
+    return result.downloadUrl;
   } catch (error) {
-    console.error('Error uploading to Cloudinary:', error);
-    // Fallback to local URL if Cloudinary upload fails
+    console.error("Error uploading to Firebase Storage:", error);
     return getFileUrl(path.basename(filePath), type);
-  }
-};
-
-/**
- * Get signed URL for Cloudinary resource (for email attachments)
- * @param {string} cloudinaryUrl - Cloudinary public URL
- * @param {string} type - 'book' or 'cover'
- * @param {number} expiresIn - Expiration in seconds (default: 300 = 5 minutes)
- * @returns {string} Signed URL
- */
-export const getCloudinarySignedUrl = (cloudinaryUrl, type = 'book', expiresIn = 300) => {
-  try {
-    if (!process.env.CLOUDINARY_CLOUD_NAME) {
-      return cloudinaryUrl; // Return original URL if Cloudinary not configured
-    }
-
-    // Extract public_id from Cloudinary URL
-    // URL format: https://res.cloudinary.com/cloud_name/resource_type/upload/v1234567890/folder/filename
-    const urlParts = cloudinaryUrl.split('/');
-    const uploadIndex = urlParts.findIndex(part => part === 'upload');
-    if (uploadIndex === -1) {
-      return cloudinaryUrl; // Not a Cloudinary URL
-    }
-
-    // Get public_id (everything after 'upload/v.../')
-    const publicIdParts = urlParts.slice(uploadIndex + 2); // Skip 'upload' and version
-    const publicId = publicIdParts.join('/').replace(/\.[^/.]+$/, ''); // Remove extension
-    
-    const resourceType = type === 'book' ? 'raw' : 'image';
-    return getSignedUrl(publicId, expiresIn, resourceType);
-  } catch (error) {
-    console.error('Error generating signed URL:', error);
-    return cloudinaryUrl; // Return original URL on error
   }
 };
 

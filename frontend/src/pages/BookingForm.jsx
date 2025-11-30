@@ -24,8 +24,8 @@ const sessionDurations = [
 const issueDurations = ["Days", "Weeks", "Months", "Years", "Uncertain"];
 
 const paymentMethods = [
-  { value: "mpesa", label: "M-Pesa (STK Push)" },
-  { value: "bank", label: "Bank Transfer" },
+  { value: "mpesa", label: "M-Pesa" },
+  { value: "bank", label: "Bank" },
 ];
 
 const initialFormState = {
@@ -54,14 +54,16 @@ const initialFormState = {
   consentConfidentiality: false,
   consentReminders: true,
   paymentMethod: "mpesa",
-  mpesaPhoneNumber: "", // Phone number for M-Pesa STK push
+  mpesaPhoneNumber: "",
   transactionReference: "",
   paymentConfirmation: false,
 };
 
-const buildValidation = (data) => {
-  const errors = {};
+const DRAFT_STORAGE_KEY = "booking_form_draft";
 
+// Step validation functions
+const validateStep1 = (data) => {
+  const errors = {};
   if (!data.fullName?.trim()) errors.fullName = "Please enter your full legal name.";
   if (!data.dateOfBirth) errors.dateOfBirth = "Select your date of birth.";
   if (!data.phone?.trim()) errors.phone = "Enter a reachable phone number.";
@@ -69,13 +71,29 @@ const buildValidation = (data) => {
   if (!data.county?.trim()) errors.county = "County of residence is required.";
   if (!data.emergencyContactName?.trim()) errors.emergencyContactName = "Emergency contact name is required.";
   if (!data.emergencyContactPhone?.trim()) errors.emergencyContactPhone = "Emergency contact phone is required.";
+  return errors;
+};
+
+const validateStep2 = (data) => {
+  const errors = {};
   if (!data.counselingType) errors.counselingType = "Select the counseling service you need.";
   if (!data.preferredCounselorId) errors.preferredCounselorId = "Select a counselor for your session.";
   if (!data.preferredDate) errors.preferredDate = "Choose a preferred date.";
   if (!data.preferredTime) errors.preferredTime = "Choose a preferred time.";
   if (!data.sessionMode) errors.sessionMode = "Select a session mode.";
   if (!data.reason?.trim()) errors.reason = "Briefly share what brings you to counseling.";
-  if (!data.issueDuration) errors.issueDuration = "Let us know how long this has been going on.";
+  return errors;
+};
+
+const validateStep3 = (data) => {
+  const errors = {};
+  if (!data.consentDataCollection) errors.consentDataCollection = "Consent is required.";
+  if (!data.consentConfidentiality) errors.consentConfidentiality = "Acknowledgement is required.";
+  return errors;
+};
+
+const validateStep4 = (data) => {
+  const errors = {};
   if (!data.paymentMethod) errors.paymentMethod = "Select a payment method.";
   if (data.paymentMethod === "mpesa" && !data.mpesaPhoneNumber?.trim()) {
     errors.mpesaPhoneNumber = "M-Pesa phone number is required.";
@@ -83,25 +101,61 @@ const buildValidation = (data) => {
   if (data.paymentMethod === "bank" && !data.transactionReference?.trim()) {
     errors.transactionReference = "Bank transfer reference is required.";
   }
-  if (!data.consentDataCollection) errors.consentDataCollection = "Consent is required.";
-  if (!data.consentConfidentiality) errors.consentConfidentiality = "Acknowledgement is required.";
   if (!data.paymentConfirmation) errors.paymentConfirmation = "Please confirm that your payment information is correct.";
-
   return errors;
+};
+
+const buildValidation = (data) => {
+  return {
+    ...validateStep1(data),
+    ...validateStep2(data),
+    ...validateStep3(data),
+    ...validateStep4(data),
+  };
 };
 
 const BookingForm = () => {
   const navigate = useNavigate();
+  const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState(initialFormState);
   const [counselors, setCounselors] = useState([]);
   const [loadingCounselors, setLoadingCounselors] = useState(true);
   const [submitState, setSubmitState] = useState({ status: "idle" });
   const [accountDetails, setAccountDetails] = useState(null);
+  const [stepErrors, setStepErrors] = useState({});
   const resolvedAccountDetails = accountDetails || {
     accountName: "Desol Nurturers",
     accountNumber: "1343210186",
     paybillNumber: "522522",
   };
+
+  // Load draft from localStorage on mount
+  useEffect(() => {
+    try {
+      const savedDraft = localStorage.getItem(DRAFT_STORAGE_KEY);
+      if (savedDraft) {
+        const parsed = JSON.parse(savedDraft);
+        setFormData(parsed);
+        // Optionally restore step if needed
+        if (parsed._lastStep) {
+          setCurrentStep(parsed._lastStep);
+          delete parsed._lastStep;
+        }
+      }
+    } catch (error) {
+      console.warn("Failed to load draft:", error);
+    }
+  }, []);
+
+  // Auto-save to localStorage whenever formData changes
+  useEffect(() => {
+    try {
+      const draftToSave = { ...formData, _lastStep: currentStep };
+      localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draftToSave));
+    } catch (error) {
+      console.warn("Failed to save draft:", error);
+    }
+  }, [formData, currentStep]);
 
   // Calculate session cost based on duration
   const calculateSessionCost = (duration) => {
@@ -109,7 +163,7 @@ const BookingForm = () => {
     if (durationNum === 45) return 2500;
     if (durationNum === 60) return 3000;
     if (durationNum === 90) return 4000;
-    return 3000; // default to 60 mins pricing
+    return 3000;
   };
 
   const sessionAmount = calculateSessionCost(formData.sessionDuration);
@@ -199,6 +253,14 @@ const BookingForm = () => {
       ...prev,
       [name]: type === "checkbox" ? checked : value,
     }));
+    // Clear step errors when user makes changes
+    if (stepErrors[name]) {
+      setStepErrors((prev) => {
+        const updated = { ...prev };
+        delete updated[name];
+        return updated;
+      });
+    }
   };
 
   const handleRadioChange = (event) => {
@@ -209,16 +271,40 @@ const BookingForm = () => {
     }));
   };
 
-  const resetForm = () => {
-    setFormData({
-      ...initialFormState,
-      // keep contact information for convenience
-      fullName: "",
-      phone: formData.phone,
-      email: formData.email,
-      county: formData.county,
-      town: formData.town,
-    });
+  const handleNext = () => {
+    let errors = {};
+    
+    if (currentStep === 1) {
+      errors = validateStep1(formData);
+    } else if (currentStep === 2) {
+      errors = validateStep2(formData);
+    } else if (currentStep === 3) {
+      errors = validateStep3(formData);
+    } else if (currentStep === 4) {
+      errors = validateStep4(formData);
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setStepErrors(errors);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+
+    setStepErrors({});
+    setCurrentStep((prev) => Math.min(prev + 1, 5));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handlePrevious = () => {
+    setCurrentStep((prev) => Math.max(prev - 1, 1));
+    setStepErrors({});
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const clearDraft = () => {
+    localStorage.removeItem(DRAFT_STORAGE_KEY);
+    setFormData(initialFormState);
+    setCurrentStep(1);
   };
 
   const handleSubmit = async (event) => {
@@ -231,6 +317,22 @@ const BookingForm = () => {
         status: "validation-error",
         validationErrors,
       });
+      // Navigate to the first step with errors
+      if (validationErrors.fullName || validationErrors.dateOfBirth || validationErrors.phone || 
+          validationErrors.email || validationErrors.county || validationErrors.emergencyContactName || 
+          validationErrors.emergencyContactPhone) {
+        setCurrentStep(1);
+      } else if (validationErrors.counselingType || validationErrors.preferredCounselorId || 
+                 validationErrors.preferredDate || validationErrors.preferredTime || 
+                 validationErrors.sessionMode || validationErrors.reason) {
+        setCurrentStep(2);
+      } else if (validationErrors.consentDataCollection || validationErrors.consentConfidentiality) {
+        setCurrentStep(3);
+      } else {
+        setCurrentStep(4);
+      }
+      setStepErrors(validationErrors);
+      window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
 
@@ -246,6 +348,7 @@ const BookingForm = () => {
           preferredTime: "Provide a valid appointment date and time.",
         },
       });
+      setCurrentStep(2);
       return;
     }
 
@@ -274,7 +377,7 @@ const BookingForm = () => {
       consentConfidentiality: formData.consentConfidentiality,
       consentReminders: formData.consentReminders,
       paymentMethod: formData.paymentMethod,
-      mpesaPhoneNumber: formData.mpesaPhoneNumber.trim(), // Phone number for M-Pesa STK push
+      mpesaPhoneNumber: formData.mpesaPhoneNumber.trim(),
       paymentConfirmation: formData.paymentConfirmation,
       transactionReference: formData.transactionReference.trim(),
     };
@@ -311,7 +414,6 @@ const BookingForm = () => {
         return;
       }
 
-      // Check if result has success flag
       if (result.success === false) {
         const validationMap = {};
         if (Array.isArray(result?.details)) {
@@ -332,6 +434,9 @@ const BookingForm = () => {
         return;
       }
 
+      // Clear draft on successful submission
+      clearDraft();
+
       // Redirect to confirmation page
       try {
         navigate("/booking/confirmation", {
@@ -348,7 +453,6 @@ const BookingForm = () => {
         });
       } catch (navError) {
         console.error("Navigation error:", navError);
-        // If navigation fails, show success message instead
         setSubmitState({
           status: "success",
           data: result.data,
@@ -367,68 +471,17 @@ const BookingForm = () => {
 
   const validationErrors =
     submitState.status === "validation-error" || submitState.status === "error"
-      ? submitState.validationErrors || {}
-      : {};
+      ? { ...stepErrors, ...(submitState.validationErrors || {}) }
+      : stepErrors;
 
-  const renderInlinePaymentInstructions = () => {
-    if (formData.paymentMethod === "mpesa") {
-      return (
-        <div className="payment-instructions">
-          <h3>M-Pesa Instructions</h3>
-          <p><strong>Paybill:</strong> {resolvedAccountDetails.paybillNumber}</p>
-          <p><strong>Account Reference:</strong> Your appointment code (displayed after submission)</p>
-          <ol>
-            <li>Open the M-Pesa app or dial *334#</li>
-            <li>Select Lipa na M-Pesa &gt; Paybill and enter business number {resolvedAccountDetails.paybillNumber}</li>
-            <li>Use your appointment code (we’ll email it) as the account/reference number</li>
-            <li>Enter the agreed session amount and complete the payment</li>
-            <li>Keep the M-Pesa confirmation message and share the transaction code with us</li>
-          </ol>
-          <p>If you receive an STK push, confirm on your phone. Otherwise, pay manually using the steps above.</p>
-        </div>
-      );
-    }
-    if (formData.paymentMethod === "bank") {
-      return (
-        <div className="payment-instructions">
-          <h3>Bank Transfer Instructions</h3>
-          <p><strong>Account Name:</strong> {resolvedAccountDetails.accountName}</p>
-          <p><strong>Account Number:</strong> {resolvedAccountDetails.accountNumber}</p>
-          <p><strong>Amount:</strong> KES {sessionAmount.toLocaleString()}</p>
-          <p><strong>Reference:</strong> Your full name or appointment code (after submission)</p>
-          <ol>
-            <li>Send KES {sessionAmount.toLocaleString()} via mobile/online banking to the account above</li>
-            <li>Use your full name or future appointment code as the transaction reference</li>
-            <li>Take a screenshot or note the transaction code</li>
-            <li>Paste the transaction code below so we can verify payment quickly</li>
-          </ol>
-        </div>
-      );
-    }
-    return null;
-  };
+  const totalSteps = 5;
+  const progressPercentage = (currentStep / totalSteps) * 100;
 
-  return (
-    <div className="booking-page">
-      <div className="booking-card">
-        <header className="booking-header">
-          <h1>Book a Counseling Session</h1>
-          <p>
-            Please complete the intake form below. All information is handled
-            confidentially in line with KECA ethical standards and Kenya’s Data
-            Protection Act (2019).
-          </p>
-        </header>
-
-
-        {submitState.status === "error" && (
-          <div className="error-banner">
-            <strong>We ran into an issue.</strong>
-            <p>{submitState.message}</p>
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} noValidate>
+  // Render step content
+  const renderStepContent = () => {
+    switch (currentStep) {
+      case 1:
+        return (
           <section className="booking-section">
             <h2>
               <span>👤</span> Personal Information
@@ -583,187 +636,152 @@ const BookingForm = () => {
               </div>
             </div>
           </section>
+        );
 
-          <section className="booking-section">
-            <h2>
-              <span>🗓️</span> Appointment Details
-            </h2>
-            <div className="form-grid two-column">
-              <div className="form-field">
-                <label htmlFor="counselingType">Type of counseling</label>
-                <select
-                  id="counselingType"
-                  name="counselingType"
-                  value={formData.counselingType}
-                  onChange={handleChange}
-                >
-                  <option value="">Select service</option>
-                  {counselingTypes.map((type) => (
-                    <option key={type} value={type}>
-                      {type}
-                    </option>
-                  ))}
-                </select>
-                {validationErrors.counselingType && (
-                  <p className="error-text">{validationErrors.counselingType}</p>
-                )}
-              </div>
-              <div className="form-field">
-                <label htmlFor="preferredCounselorId">
-                  Preferred counselor
-                </label>
-                <select
-                  id="preferredCounselorId"
-                  name="preferredCounselorId"
-                  value={formData.preferredCounselorId}
-                  onChange={handleChange}
-                  disabled={loadingCounselors}
-                >
-                  <option value="">
-                    {loadingCounselors ? "Loading..." : "Select counselor"}
-                  </option>
-                  {counselors.map((counselor) => (
-                    <option key={counselor.id} value={counselor.id}>
-                      {counselor.name}
-                    </option>
-                  ))}
-                </select>
-                {validationErrors.preferredCounselorId && (
-                  <p className="error-text">
-                    {validationErrors.preferredCounselorId}
-                  </p>
-                )}
-              </div>
-              <div className="form-field">
-                <label htmlFor="preferredDate">Preferred date</label>
-                <input
-                  id="preferredDate"
-                  name="preferredDate"
-                  type="date"
-                  value={formData.preferredDate}
-                  onChange={handleChange}
-                />
-                {validationErrors.preferredDate && (
-                  <p className="error-text">{validationErrors.preferredDate}</p>
-                )}
-              </div>
-              <div className="form-field">
-                <label htmlFor="preferredTime">Preferred time</label>
-                <input
-                  id="preferredTime"
-                  name="preferredTime"
-                  type="time"
-                  value={formData.preferredTime}
-                  onChange={handleChange}
-                />
-                {validationErrors.preferredTime && (
-                  <p className="error-text">{validationErrors.preferredTime}</p>
-                )}
-              </div>
-              <div className="form-field">
-                <label>Mode of session</label>
-                <div className="radio-row">
-                  <label>
-                    <input
-                      type="radio"
-                      name="sessionMode"
-                      value="Online video call"
-                      checked={formData.sessionMode === "Online video call"}
-                      onChange={handleRadioChange}
-                    />
-                    Video call
-                  </label>
-                  <label>
-                    <input
-                      type="radio"
-                      name="sessionMode"
-                      value="Audio call"
-                      checked={formData.sessionMode === "Audio call"}
-                      onChange={handleRadioChange}
-                    />
-                    Audio call
-                  </label>
+      case 2:
+        return (
+          <>
+            <section className="booking-section">
+              <h2>
+                <span>🗓️</span> Appointment Details
+              </h2>
+              <div className="form-grid two-column">
+                <div className="form-field">
+                  <label htmlFor="counselingType">Type of counseling</label>
+                  <select
+                    id="counselingType"
+                    name="counselingType"
+                    value={formData.counselingType}
+                    onChange={handleChange}
+                  >
+                    <option value="">Select service</option>
+                    {counselingTypes.map((type) => (
+                      <option key={type} value={type}>
+                        {type}
+                      </option>
+                    ))}
+                  </select>
+                  {validationErrors.counselingType && (
+                    <p className="error-text">{validationErrors.counselingType}</p>
+                  )}
                 </div>
-                {validationErrors.sessionMode && (
-                  <p className="error-text">{validationErrors.sessionMode}</p>
-                )}
-              </div>
-              <div className="form-field">
-                <label htmlFor="sessionDuration">
-                  Session duration <span>(optional)</span>
-                </label>
-                <select
-                  id="sessionDuration"
-                  name="sessionDuration"
-                  value={formData.sessionDuration}
-                  onChange={handleChange}
-                >
-                  {sessionDurations.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
+                <div className="form-field">
+                  <label htmlFor="preferredCounselorId">
+                    Preferred counselor
+                  </label>
+                  <select
+                    id="preferredCounselorId"
+                    name="preferredCounselorId"
+                    value={formData.preferredCounselorId}
+                    onChange={handleChange}
+                    disabled={loadingCounselors}
+                  >
+                    <option value="">
+                      {loadingCounselors ? "Loading..." : "Select counselor"}
                     </option>
-                  ))}
-                </select>
+                    {counselors.map((counselor) => (
+                      <option key={counselor.id} value={counselor.id}>
+                        {counselor.name}
+                      </option>
+                    ))}
+                  </select>
+                  {validationErrors.preferredCounselorId && (
+                    <p className="error-text">
+                      {validationErrors.preferredCounselorId}
+                    </p>
+                  )}
+                </div>
+                <div className="form-field">
+                  <label htmlFor="preferredDate">Preferred date</label>
+                  <input
+                    id="preferredDate"
+                    name="preferredDate"
+                    type="date"
+                    value={formData.preferredDate}
+                    onChange={handleChange}
+                  />
+                  {validationErrors.preferredDate && (
+                    <p className="error-text">{validationErrors.preferredDate}</p>
+                  )}
+                </div>
+                <div className="form-field">
+                  <label htmlFor="preferredTime">Preferred time</label>
+                  <input
+                    id="preferredTime"
+                    name="preferredTime"
+                    type="time"
+                    value={formData.preferredTime}
+                    onChange={handleChange}
+                  />
+                  {validationErrors.preferredTime && (
+                    <p className="error-text">{validationErrors.preferredTime}</p>
+                  )}
+                </div>
+                <div className="form-field">
+                  <label>Mode of session</label>
+                  <div className="radio-row">
+                    <label>
+                      <input
+                        type="radio"
+                        name="sessionMode"
+                        value="Online video call"
+                        checked={formData.sessionMode === "Online video call"}
+                        onChange={handleRadioChange}
+                      />
+                      Video call
+                    </label>
+                    <label>
+                      <input
+                        type="radio"
+                        name="sessionMode"
+                        value="Audio call"
+                        checked={formData.sessionMode === "Audio call"}
+                        onChange={handleRadioChange}
+                      />
+                      Audio call
+                    </label>
+                  </div>
+                  {validationErrors.sessionMode && (
+                    <p className="error-text">{validationErrors.sessionMode}</p>
+                  )}
+                </div>
               </div>
-            </div>
-          </section>
+            </section>
 
-          <section className="booking-section">
-            <h2>
-              <span>🧠</span> Counseling Background
-            </h2>
-            <div className="form-grid">
-              <div className="form-field">
-                <label htmlFor="reason">
-                  What brings you to counseling today?
-                </label>
-                <textarea
-                  id="reason"
-                  name="reason"
-                  placeholder="Share a short description to help your counselor prepare..."
-                  value={formData.reason}
-                  onChange={handleChange}
-                />
-                {validationErrors.reason && (
-                  <p className="error-text">{validationErrors.reason}</p>
-                )}
+            <section className="booking-section">
+              <h2>
+                <span>🧠</span> Counseling Background
+              </h2>
+              <div className="form-grid">
+                <div className="form-field">
+                  <label htmlFor="reason">
+                    What brings you to counseling today?
+                  </label>
+                  <textarea
+                    id="reason"
+                    name="reason"
+                    placeholder="Share a short description to help your counselor prepare..."
+                    value={formData.reason}
+                    onChange={handleChange}
+                  />
+                  {validationErrors.reason && (
+                    <p className="error-text">{validationErrors.reason}</p>
+                  )}
+                </div>
+                <div className="form-field">
+                  <label htmlFor="sessionGoals">
+                    What goals would you like to achieve? <span>(optional)</span>
+                  </label>
+                  <textarea
+                    id="sessionGoals"
+                    name="sessionGoals"
+                    placeholder="E.g., manage anxiety, improve communication, process grief..."
+                    value={formData.sessionGoals}
+                    onChange={handleChange}
+                  />
+                </div>
               </div>
-              <div className="form-field">
-                <label htmlFor="sessionGoals">
-                  What goals would you like to achieve? <span>(optional)</span>
-                </label>
-                <textarea
-                  id="sessionGoals"
-                  name="sessionGoals"
-                  placeholder="E.g., manage anxiety, improve communication, process grief..."
-                  value={formData.sessionGoals}
-                  onChange={handleChange}
-                />
-              </div>
-            </div>
-            <div className="form-grid two-column" style={{ marginTop: "1rem" }}>
-              <div className="form-field">
-                <label htmlFor="issueDuration">
-                  How long have you experienced this?
-                </label>
-                <select
-                  id="issueDuration"
-                  name="issueDuration"
-                  value={formData.issueDuration}
-                  onChange={handleChange}
-                >
-                  <option value="">Select duration</option>
-                  {issueDurations.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-                {validationErrors.issueDuration && (
-                  <p className="error-text">{validationErrors.issueDuration}</p>
-                )}
-              </div>
-              <div className="form-field">
+              <div className="form-field" style={{ marginTop: "1rem" }}>
                 <label>Have you attended counseling before?</label>
                 <div className="radio-row">
                   <label>
@@ -788,22 +806,25 @@ const BookingForm = () => {
                   </label>
                 </div>
               </div>
-            </div>
-            {formData.previousCounseling === "yes" && (
-              <div className="form-field" style={{ marginTop: "1rem" }}>
-                <label htmlFor="previousCounselingDetails">
-                  Tell us briefly about your previous counseling experience
-                </label>
-                <textarea
-                  id="previousCounselingDetails"
-                  name="previousCounselingDetails"
-                  value={formData.previousCounselingDetails}
-                  onChange={handleChange}
-                />
-              </div>
-            )}
-          </section>
+              {formData.previousCounseling === "yes" && (
+                <div className="form-field" style={{ marginTop: "1rem" }}>
+                  <label htmlFor="previousCounselingDetails">
+                    Tell us briefly about your previous counseling experience
+                  </label>
+                  <textarea
+                    id="previousCounselingDetails"
+                    name="previousCounselingDetails"
+                    value={formData.previousCounselingDetails}
+                    onChange={handleChange}
+                  />
+                </div>
+              )}
+            </section>
+          </>
+        );
 
+      case 3:
+        return (
           <section className="booking-section">
             <h2>
               <span>⚖️</span> Consent & Privacy
@@ -859,7 +880,10 @@ const BookingForm = () => {
               </div>
             </div>
           </section>
+        );
 
+      case 4:
+        return (
           <section className="booking-section">
             <h2>
               <span>💳</span> Payment & Confirmation
@@ -908,6 +932,9 @@ const BookingForm = () => {
                     Account Number: {resolvedAccountDetails.accountNumber}<br />
                     Amount: KES {sessionAmount.toLocaleString()}
                   </p>
+                  {validationErrors.mpesaPhoneNumber && (
+                    <p className="error-text">{validationErrors.mpesaPhoneNumber}</p>
+                  )}
                 </div>
               )}
             </div>
@@ -936,8 +963,6 @@ const BookingForm = () => {
               </p>
             </div>
 
-            {renderInlinePaymentInstructions()}
-
             <div className="checkbox-group" style={{ marginTop: "1.5rem" }}>
               <div className="checkbox-item">
                 <input
@@ -960,17 +985,135 @@ const BookingForm = () => {
               )}
             </div>
           </section>
+        );
 
-          <div className="booking-actions">
-            <button
-              type="submit"
-              disabled={submitState.status === "submitting"}
-            >
-              {submitState.status === "submitting"
-                ? "Submitting booking..."
-                : "Submit booking request"}
-            </button>
-            <p className="booking-support-text">
+      case 5:
+        return (
+          <section className="booking-section">
+            <h2>
+              <span>✅</span> Review & Submit
+            </h2>
+            <div className="review-summary">
+              <div className="review-item">
+                <strong>Full Name:</strong> {formData.fullName || "Not provided"}
+              </div>
+              <div className="review-item">
+                <strong>Email:</strong> {formData.email || "Not provided"}
+              </div>
+              <div className="review-item">
+                <strong>Phone:</strong> {formData.phone || "Not provided"}
+              </div>
+              <div className="review-item">
+                <strong>Counseling Type:</strong> {formData.counselingType || "Not provided"}
+              </div>
+              <div className="review-item">
+                <strong>Preferred Date:</strong> {formData.preferredDate || "Not provided"}
+              </div>
+              <div className="review-item">
+                <strong>Preferred Time:</strong> {formData.preferredTime || "Not provided"}
+              </div>
+              <div className="review-item">
+                <strong>Session Amount:</strong> KES {sessionAmount.toLocaleString()}
+              </div>
+              <div className="review-item">
+                <strong>Payment Method:</strong> {paymentMethods.find(m => m.value === formData.paymentMethod)?.label || "Not selected"}
+              </div>
+            </div>
+            <p style={{ marginTop: "1rem", color: "#64748b", fontSize: "0.9rem" }}>
+              Please review all information carefully. Click "Submit Booking Request" to finalize your booking.
+            </p>
+          </section>
+        );
+
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div className="booking-page">
+      <div className="booking-card">
+        <header className="booking-header">
+          <h1>Book a Counseling Session</h1>
+          <p>
+            Please complete the intake form below. All information is handled
+            confidentially in line with KECA ethical standards and Kenya's Data
+            Protection Act (2019).
+          </p>
+        </header>
+
+        {/* Progress Bar */}
+        <div className="wizard-progress">
+          <div className="progress-bar-container">
+            <div 
+              className="progress-bar-fill" 
+              style={{ width: `${progressPercentage}%` }}
+            ></div>
+          </div>
+          <div className="progress-steps">
+            {[1, 2, 3, 4, 5].map((step) => (
+              <div
+                key={step}
+                className={`progress-step ${currentStep >= step ? "active" : ""} ${currentStep === step ? "current" : ""}`}
+              >
+                <div className="step-number">{step}</div>
+                <div className="step-label">
+                  {step === 1 && "Personal"}
+                  {step === 2 && "Appointment"}
+                  {step === 3 && "Consent"}
+                  {step === 4 && "Payment"}
+                  {step === 5 && "Review"}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {submitState.status === "error" && (
+          <div className="error-banner">
+            <strong>We ran into an issue.</strong>
+            <p>{submitState.message}</p>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} noValidate>
+          {renderStepContent()}
+
+          {/* Navigation Buttons */}
+          <div className="wizard-navigation">
+            {currentStep > 1 && (
+              <button
+                type="button"
+                onClick={handlePrevious}
+                className="btn-secondary"
+              >
+                ← Previous
+              </button>
+            )}
+            <div style={{ flex: 1 }}></div>
+            {currentStep < 5 ? (
+              <button
+                type="button"
+                onClick={handleNext}
+                className="btn-primary"
+              >
+                Next →
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={submitState.status === "submitting"}
+                className="btn-primary"
+              >
+                {submitState.status === "submitting"
+                  ? "Submitting booking..."
+                  : "Submit booking request"}
+              </button>
+            )}
+          </div>
+
+          <div className="booking-support-text">
+            <p>
               Need help? Email{" "}
               <a href="mailto:support@nextstepmentorship.com">
                 support@nextstepmentorship.com
@@ -985,4 +1128,3 @@ const BookingForm = () => {
 };
 
 export default BookingForm;
-

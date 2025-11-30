@@ -1,7 +1,7 @@
 import express from "express";
 import multer from "multer";
 import { login, me, changePassword, getProfile, updateProfile, getUserByEmail, getDocumentsByEmail } from "../controllers/authController.js";
-import { basicSignup, confirmEmail } from "../controllers/basicSignupController.js";
+import { basicSignup, confirmEmail, resendVerificationEmail } from "../controllers/basicSignupController.js";
 import { savePersonalInfo, checkEmail } from "../controllers/personalInfoController.js";
 import { saveProfessionalInfo } from "../controllers/professionalInfoController.js";
 import { authMiddleware } from "../middleware/authMiddleware.js";
@@ -29,6 +29,7 @@ const router = express.Router();
 
 // Basic signup route (before rate limiting for registration)
 router.post("/basic-signup", basicSignup);
+router.post("/resend-verification", resendVerificationEmail);
 
 // Email verification route (before rate limiting)
 router.get("/confirm-email", confirmEmail);

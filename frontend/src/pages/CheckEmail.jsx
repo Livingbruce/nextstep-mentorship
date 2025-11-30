@@ -1,13 +1,57 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { API_BASE_URL } from '../utils/apiConfig.js';
 
 const CheckEmail = () => {
   const navigate = useNavigate();
   const [email] = useState(localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')).email : '');
+  const [resendState, setResendState] = useState({ loading: false, message: '', type: '' });
 
   const handleResendEmail = async () => {
-    // TODO: Implement resend email functionality
-    alert('✅ Resend email functionality will be implemented soon!');
+    if (!email) {
+      setResendState({
+        loading: false,
+        message: 'We could not detect your email address. Please go back and sign up again.',
+        type: 'error'
+      });
+      return;
+    }
+
+    setResendState({ loading: true, message: '', type: '' });
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/auth/resend-verification`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ email })
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.error || data?.message || 'Failed to resend verification email.');
+      }
+
+      let successMessage = data?.message || 'Verification email resent successfully.';
+      if (data?.emailStatus === 'queued') {
+        successMessage = 'Email queued for delivery. Please check again in a few minutes.';
+      } else if (data?.emailStatus === 'delivered') {
+        successMessage = 'Your email is already confirmed. You can log in now.';
+      }
+
+      setResendState({
+        loading: false,
+        message: successMessage,
+        type: 'success'
+      });
+    } catch (error) {
+      setResendState({
+        loading: false,
+        message: error.message || 'Unable to resend verification email. Please try again later.',
+        type: 'error'
+      });
+    }
   };
 
   return (
@@ -89,21 +133,39 @@ const CheckEmail = () => {
 
           <button
             onClick={handleResendEmail}
+            disabled={resendState.loading}
             style={{
               width: "100%",
               padding: "12px",
-              background: "rgba(102, 126, 234, 0.1)",
-              color: "#667eea",
+              background: resendState.loading ? "rgba(102, 126, 234, 0.05)" : "rgba(102, 126, 234, 0.1)",
+              color: resendState.loading ? "#a5b4fc" : "#667eea",
               border: "2px solid #667eea",
               borderRadius: "8px",
               fontSize: "14px",
               fontWeight: "500",
-              cursor: "pointer",
-              marginBottom: "16px"
+              cursor: resendState.loading ? "not-allowed" : "pointer",
+              marginBottom: "12px"
             }}
           >
-            Resend Confirmation Email
+            {resendState.loading ? 'Sending...' : 'Resend Confirmation Email'}
           </button>
+
+          {resendState.message && (
+            <div
+              style={{
+                width: "100%",
+                borderRadius: "8px",
+                padding: "12px",
+                border: resendState.type === 'success' ? "1px solid #48bb78" : "1px solid #f56565",
+                background: resendState.type === 'success' ? "rgba(72, 187, 120, 0.1)" : "rgba(245, 101, 101, 0.1)",
+                color: resendState.type === 'success' ? "#276749" : "#c53030",
+                fontSize: "13px",
+                marginBottom: "16px"
+              }}
+            >
+              {resendState.message}
+            </div>
+          )}
           
           <button
             onClick={() => navigate('/login')}

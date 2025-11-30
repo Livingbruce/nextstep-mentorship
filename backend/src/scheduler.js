@@ -2,6 +2,63 @@ import cron from "node-cron";
 import pool from "./db/pool.js";
 import emailService from "./services/emailService.js";
 
+async function resendPendingVerificationEmails() {
+  if (!emailService.canSendTransactionalEmails()) {
+    return;
+  }
+
+  try {
+    const pending = await pool.query(
+      `SELECT id, name, email, email_verification_token, email_verification_attempts
+       FROM counselors
+       WHERE email_confirmed = FALSE
+         AND email_verification_token IS NOT NULL
+         AND email_verification_delivery_status IN ('pending', 'failed', 'queued')
+         AND (email_verification_sent_at IS NULL OR email_verification_sent_at <= NOW() - INTERVAL '30 minutes')
+         AND email_verification_attempts < 5
+       ORDER BY email_verification_sent_at NULLS FIRST
+       LIMIT 20`
+    );
+
+    for (const counselor of pending.rows) {
+      const firstName = counselor.name?.split(" ")?.[0] || "Counselor";
+      try {
+        await emailService.sendEmailVerification(
+          counselor.email,
+          firstName,
+          counselor.email_verification_token
+        );
+        await pool.query(
+          `UPDATE counselors
+             SET email_verification_sent_at = NOW(),
+                 email_verification_attempts = email_verification_attempts + 1,
+                 email_verification_delivery_status = 'sent',
+                 email_verification_last_error = NULL
+           WHERE id = $1`,
+          [counselor.id]
+        );
+        console.log(`✅ Resent verification email to ${counselor.email}`);
+      } catch (err) {
+        console.error(
+          `❌ Failed to resend verification email to ${counselor.email}:`,
+          err.message
+        );
+        await pool.query(
+          `UPDATE counselors
+             SET email_verification_sent_at = NOW(),
+                 email_verification_attempts = email_verification_attempts + 1,
+                 email_verification_delivery_status = 'failed',
+                 email_verification_last_error = $2
+           WHERE id = $1`,
+          [counselor.id, err.message?.substring(0, 500) || "Email delivery failed"]
+        );
+      }
+    }
+  } catch (err) {
+    console.error("Verification resend scheduler error:", err);
+  }
+}
+
 export function scheduleReminders(bot) {
 
   // Telegram reminders for bot bookings
@@ -261,4 +318,7 @@ export function scheduleReminders(bot) {
       console.error("Payment reminder scheduler error:", err);
     }
   });
+
+  // Retry email verification delivery for pending accounts
+  cron.schedule("*/15 * * * *", resendPendingVerificationEmails);
 }
