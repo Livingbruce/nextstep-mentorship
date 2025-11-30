@@ -1097,55 +1097,42 @@ router.post("/send-email/:bookId", async (req, res) => {
     
     // Check if it's a Firebase Storage URL
     if (isFirebaseStorageUrl(book.file_url)) {
-      // Try direct download first (public assets with token)
-      downloadUrl = book.file_url;
+      // Extract storage path and download directly from Firebase Storage using Admin SDK
       try {
-        const directBuffer = await downloadUrlToBuffer(book.file_url);
-        fileExists = true;
-        attachment = {
-          filename: `${book.title}${path.extname(book.file_url) || '.pdf'}`,
-          content: directBuffer,
-        };
-        console.log("✅ Downloaded file from Firebase Storage using public URL");
-      } catch (directError) {
-        console.warn(
-          `⚠️  Direct download from Firebase Storage failed (${directError.message}). Trying storage path.`
-        );
-      }
-
-      if (!fileExists) {
-        // Extract storage path and download directly from Firebase Storage
-        try {
-          const storagePath = extractFirebaseStoragePath(book.file_url);
-          if (!storagePath) {
-            throw new Error('Invalid Firebase Storage URL format');
-          }
-          
-          console.log(`✅ Extracted storage path: ${storagePath}`);
-          console.log(`📋 Original Firebase Storage URL: ${book.file_url}`);
-          
-          // Download directly from Firebase Storage
-          try {
-            const fileBuffer = await downloadFromFirebaseStorage(storagePath);
-            fileExists = true;
-            attachment = {
-              filename: `${book.title}${path.extname(book.file_url) || '.pdf'}`,
-              content: fileBuffer
-            };
-            
-            // Generate a signed URL for the email download link (with longer expiry)
-            downloadUrl = await getFirebaseSignedDownloadUrl(storagePath, 86400); // 24 hours expiry
-            console.log(`✅ Downloaded file from Firebase Storage for attachment`);
-          } catch (downloadError) {
-            console.warn(`⚠️  Could not download from Firebase Storage (${downloadError.message}), generating signed URL only`);
-            // Still provide a signed download URL even if we can't attach the file
-            downloadUrl = await getFirebaseSignedDownloadUrl(storagePath, 86400); // 24 hours expiry
-          }
-        } catch (error) {
-          console.warn(`⚠️  Error processing Firebase Storage URL:`, error);
-          // Fallback: use original URL
-          downloadUrl = book.file_url;
+        const storagePath = extractFirebaseStoragePath(book.file_url);
+        if (!storagePath) {
+          throw new Error('Invalid Firebase Storage URL format');
         }
+        
+        console.log(`✅ Extracted storage path: ${storagePath}`);
+        console.log(`📋 Original Firebase Storage URL: ${book.file_url}`);
+        
+        // Download directly from Firebase Storage using Admin SDK (bypasses authentication issues)
+        try {
+          const fileBuffer = await downloadFromFirebaseStorage(storagePath);
+          fileExists = true;
+          attachment = {
+            filename: `${book.title}${path.extname(book.file_url) || '.pdf'}`,
+            content: fileBuffer
+          };
+          
+          // Generate a signed URL for the email download link (with longer expiry)
+          downloadUrl = await getFirebaseSignedDownloadUrl(storagePath, 86400); // 24 hours expiry
+          console.log(`✅ Downloaded file from Firebase Storage for attachment`);
+        } catch (downloadError) {
+          console.warn(`⚠️  Could not download from Firebase Storage (${downloadError.message}), generating signed URL only`);
+          // Still provide a signed download URL even if we can't attach the file
+          try {
+            downloadUrl = await getFirebaseSignedDownloadUrl(storagePath, 86400); // 24 hours expiry
+          } catch (urlError) {
+            console.warn(`⚠️  Could not generate signed URL, using original URL`);
+            downloadUrl = book.file_url;
+          }
+        }
+      } catch (error) {
+        console.warn(`⚠️  Error processing Firebase Storage URL:`, error);
+        // Fallback: use original URL
+        downloadUrl = book.file_url;
       }
     } else if (book.file_url.includes('/api/books/files/')) {
       // Local file - check if it exists
@@ -1185,16 +1172,20 @@ router.post("/send-email/:bookId", async (req, res) => {
     if (book.cover_image_url) {
       try {
         let coverBuffer = null;
-        try {
-          coverBuffer = await downloadUrlToBuffer(book.cover_image_url);
-        } catch (coverError) {
-          if (isFirebaseStorageUrl(book.cover_image_url)) {
-            const storagePath = extractFirebaseStoragePath(book.cover_image_url);
-            if (!storagePath) {
-              throw coverError;
-            }
+        // Check if it's a Firebase Storage URL first - use Admin SDK directly
+        if (isFirebaseStorageUrl(book.cover_image_url)) {
+          const storagePath = extractFirebaseStoragePath(book.cover_image_url);
+          if (storagePath) {
             coverBuffer = await downloadFromFirebaseStorage(storagePath);
+            console.log(`✅ Downloaded cover image from Firebase Storage`);
           } else {
+            throw new Error('Could not extract storage path from cover image URL');
+          }
+        } else {
+          // For non-Firebase URLs, try direct download
+          try {
+            coverBuffer = await downloadUrlToBuffer(book.cover_image_url);
+          } catch (coverError) {
             throw coverError;
           }
         }
